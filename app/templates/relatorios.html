@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Relatórios e Histórico | Smell CLINIC{% endblock %}
+
+{% block head %}
+<style>
+    .estoque-tabs-container { display: flex; gap: 16px; border-bottom: 2px solid var(--border-color); margin-bottom: 32px; flex-wrap: wrap; }
+    .estoque-tab { background: none; border: none; padding: 12px 24px; font-family: 'Montserrat', sans-serif; font-size: 0.95rem; font-weight: 600; color: var(--text-muted); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all 0.2s ease; display: flex; align-items: center; gap: 8px; }
+    .estoque-tab:hover, .estoque-tab.active { color: var(--color-clinic-spa); }
+    .estoque-tab.active { border-bottom-color: var(--color-clinic-spa); }
+    .estoque-content { display: none; animation: fadeIn 0.3s ease; }
+    .estoque-content.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .smell-table { width: 100%; border-collapse: collapse; text-align: left; }
+    .smell-table th { padding: 16px; background-color: #fafafa; color: var(--text-muted); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; border-bottom: 1px solid var(--border-color); }
+    .smell-table td { padding: 16px; border-bottom: 1px solid var(--border-color); color: var(--text-dark); font-size: 0.95rem; }
+    .resumo-card { background: #fdf4ff; border-left: 4px solid var(--color-clinic-spa); padding: 16px; border-radius: 8px; margin-top: 16px; display: inline-block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2 style="color: var(--text-dark); font-weight: 600; margin-bottom: 8px;">Relatórios Gerenciais</h2>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">Histórico de Consumo, Vendas e Extrato de Saídas.</p>
+    </div>
+</div>
+
+<div class="estoque-tabs-container">
+    <button class="estoque-tab active" onclick="abrirAba(event, 'aba-vendas')"><i class="fa-solid fa-ranking-star"></i> Top Vendidos</button>
+    <button class="estoque-tab" onclick="abrirAba(event, 'aba-saidas')"><i class="fa-solid fa-arrow-trend-down"></i> Saídas Financeiras</button>
+    <button class="estoque-tab" onclick="abrirAba(event, 'aba-historico')"><i class="fa-solid fa-clock-rotate-left"></i> Histórico do Item</button>
+</div>
+
+<div id="aba-vendas" class="estoque-content active">
+    <div class="agenda-container" style="padding: 24px;">
+        <div style="display: flex; gap: 16px; align-items: flex-end; margin-bottom: 24px;">
+            <div class="form-group" style="margin: 0; width: 250px;">
+                <label>Selecione o Mês e Ano</label>
+                <input type="month" id="mesVendas" class="form-control">
+            </div>
+            <button class="btn btn-primary" onclick="gerarRelatorioVendas()"><i class="fa-solid fa-search"></i> Filtrar</button>
+        </div>
+        
+        <table class="smell-table">
+            <thead><tr><th>Posição</th><th>Código</th><th>Descrição do Produto</th><th>Quantidade Total Vendida</th></tr></thead>
+            <tbody id="tbodyVendas"><tr><td colspan="4" style="text-align:center;">Selecione um mês para carregar.</td></tr></tbody>
+        </table>
+    </div>
+</div>
+
+<div id="aba-saidas" class="estoque-content">
+    <div class="agenda-container" style="padding: 24px;">
+        <div style="display: flex; gap: 16px; align-items: flex-end; margin-bottom: 24px; flex-wrap: wrap;">
+            <div class="form-group" style="margin: 0;">
+                <label>Data Inicial</label>
+                <input type="date" id="dataInicio" class="form-control">
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label>Data Final</label>
+                <input type="date" id="dataFim" class="form-control">
+            </div>
+            <button class="btn btn-primary" onclick="gerarRelatorioSaidas()"><i class="fa-solid fa-search"></i> Gerar Extrato</button>
+        </div>
+
+        <table class="smell-table">
+            <thead><tr><th>Data / Hora</th><th>Descrição da Despesa</th><th>Forma de Retirada</th><th>Valor (R$)</th></tr></thead>
+            <tbody id="tbodySaidas"><tr><td colspan="4" style="text-align:center;">Selecione o período acima.</td></tr></tbody>
+        </table>
+        <div id="totalSaidasContainer" style="display: none;" class="resumo-card">
+            <h3 style="margin:0; color: #ef4444;">Total Gasto no Período: R$ <span id="valorTotalSaidas">0.00</span></h3>
+        </div>
+    </div>
+</div>
+
+<div id="aba-historico" class="estoque-content">
+    <div class="agenda-container" style="padding: 24px;">
+        <div style="display: flex; gap: 16px; align-items: flex-end; margin-bottom: 24px;">
+            <div class="form-group" style="margin: 0; width: 100%; max-width: 400px;">
+                <label>Buscar Produto em Estoque</label>
+                <input type="text" id="inputCodigoHistorico" class="form-control" list="listaProdutos" placeholder="Selecione ou digite o nome...">
+                <datalist id="listaProdutos">
+                    {% for p in produtos %}
+                        <option value="{{ p.codigo }}">{{ p.descricao }}</option>
+                    {% endfor %}
+                </datalist>
+            </div>
+            <button class="btn btn-primary" onclick="gerarRelatorioItem()"><i class="fa-solid fa-search"></i> Ver Movimentações</button>
+        </div>
+
+        <table class="smell-table">
+            <thead><tr><th>Data / Hora</th><th>Tipo</th><th>Qtde. Movimentada</th><th>Saldo Resultante</th><th>Observações</th></tr></thead>
+            <tbody id="tbodyHistorico"><tr><td colspan="5" style="text-align:center;">Selecione um produto para visualizar.</td></tr></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function abrirAba(evento, abaId) {
+        document.querySelectorAll('.estoque-tab').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.estoque-content').forEach(content => content.classList.remove('active'));
+        evento.currentTarget.classList.add('active');
+        document.getElementById(abaId).classList.add('active');
+    }
+
+    // Define mês atual por padrão na aba Vendas
+    const dataAtual = new Date();
+    document.getElementById('mesVendas').value = `${dataAtual.getFullYear()}-${String(dataAtual.getMonth()+1).padStart(2, '0')}`;
+
+    async function gerarRelatorioVendas() {
+        const mes = document.getElementById('mesVendas').value;
+        const tbody = document.getElementById('tbodyVendas');
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Carregando...</td></tr>';
+        
+        const res = await fetch(`/api/relatorios/vendas?mes=${mes}`);
+        const dados = await res.json();
+        
+        tbody.innerHTML = '';
+        if(dados.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#718096;">Nenhuma venda registrada neste mês.</td></tr>';
+            return;
+        }
+
+        dados.forEach((row, index) => {
+            tbody.innerHTML += `<tr>
+                <td><strong># ${index + 1}</strong></td>
+                <td>${row.codigo}</td>
+                <td>${row.descricao}</td>
+                <td><span style="background-color: var(--color-smell-primary); color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;">${row.total_vendido} un.</span></td>
+            </tr>`;
+        });
+    }
+
+    async function gerarRelatorioSaidas() {
+        const ini = document.getElementById('dataInicio').value;
+        const fim = document.getElementById('dataFim').value;
+        if(!ini || !fim) return alert("Selecione a data de início e fim.");
+        
+        const tbody = document.getElementById('tbodySaidas');
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Carregando...</td></tr>';
+        
+        const res = await fetch(`/api/relatorios/saidas?inicio=${ini}&fim=${fim}`);
+        const dados = await res.json();
+        
+        tbody.innerHTML = '';
+        let total = 0.0;
+        
+        if(dados.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#718096;">Nenhuma saída financeira neste período.</td></tr>';
+            document.getElementById('totalSaidasContainer').style.display = 'none';
+            return;
+        }
+
+        dados.forEach(row => {
+            total += row.valor;
+            tbody.innerHTML += `<tr>
+                <td>${row.data_hora_lancamento}</td>
+                <td>${row.observacoes}</td>
+                <td>${row.forma_pagamento}</td>
+                <td style="color: #ef4444; font-weight:bold;">R$ ${row.valor.toFixed(2)}</td>
+            </tr>`;
+        });
+        
+        document.getElementById('valorTotalSaidas').innerText = total.toFixed(2);
+        document.getElementById('totalSaidasContainer').style.display = 'inline-block';
+    }
+
+    async function gerarRelatorioItem() {
+        const codigo = document.getElementById('inputCodigoHistorico').value;
+        if(!codigo) return alert("Por favor, selecione ou digite o código de um produto.");
+        
+        const tbody = document.getElementById('tbodyHistorico');
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Carregando...</td></tr>';
+        
+        const res = await fetch(`/api/relatorios/historico-estoque?codigo=${codigo}`);
+        const dados = await res.json();
+        
+        tbody.innerHTML = '';
+        if(dados.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#718096;">Nenhum histórico encontrado.</td></tr>';
+            return;
+        }
+
+        dados.forEach(row => {
+            let cor = row.tipo === 'Venda' || row.tipo === 'Saída' ? '#ef4444' : '#22c55e';
+            if(row.tipo === 'Ajuste') cor = '#f59e0b';
+            
+            tbody.innerHTML += `<tr>
+                <td>${row.data_hora}</td>
+                <td style="color: ${cor}; font-weight: bold;">${row.tipo}</td>
+                <td>${row.quantidade_movimentada}</td>
+                <td><strong>${row.quantidade_saldo}</strong></td>
+                <td style="font-size: 0.85rem; color: #718096;">${row.observacoes}</td>
+            </tr>`;
+        });
+    }
+</script>
+{% endblock %}

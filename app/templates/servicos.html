@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Serviços - Smell CLINIC | SPA{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2 class="font-clinic-subtitle" style="font-weight: 600; font-size: 1.5rem;">Catálogo de Serviços</h2>
+        <span style="color: var(--text-muted); font-size: 0.9rem;">Procedimentos, durações e valores</span>
+    </div>
+    <button class="btn btn-primary" onclick="abrirModalNovo()"><i class="fa-solid fa-plus" style="margin-right: 8px;"></i> Novo Serviço</button>
+</div>
+
+<div class="agenda-container" style="padding: 24px;">
+    <table style="width: 100%; text-align: left; border-collapse: collapse;">
+        <thead>
+            <tr style="border-bottom: 2px solid var(--border-color);">
+                <th style="padding: 12px 8px;">Nome do Procedimento</th>
+                <th style="padding: 12px 8px;">Duração (Minutos)</th>
+                <th style="padding: 12px 8px;">Valor Base (R$)</th>
+                <th style="padding: 12px 8px; text-align: right;">Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if servicos %}
+                {% for s in servicos %}
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 12px 8px; font-weight: 500;">{{ s.nome }}</td>
+                    <td style="padding: 12px 8px;">
+                        <i class="fa-regular fa-clock" style="color: var(--text-muted); margin-right: 4px;"></i> {{ s.duracao_minutos }} min
+                    </td>
+                    <td style="padding: 12px 8px; color: var(--color-smell-primary); font-weight: 600;">
+                        R$ {{ "%.2f"|format(s.preco_padrao) }}
+                    </td>
+                    <td style="padding: 12px 8px; text-align: right;">
+                        <button class="btn btn-secondary" style="padding: 6px 12px; margin-right: 4px;" 
+                                onclick="abrirModalEditar('{{ s.id }}', '{{ s.nome }}', '{{ s.duracao_minutos }}', '{{ s.preco_padrao }}')" title="Editar Serviço">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                        <button class="btn btn-secondary" style="padding: 6px 12px; color: #ef4444;" 
+                                onclick="abrirModalExcluir('{{ s.id }}', '{{ s.nome }}')" title="Excluir Definitivamente">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                        Nenhum serviço cadastrado na base de dados.
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<!-- MODAL: NOVO SERVIÇO -->
+<div class="modal-overlay" id="modalNovoServico">
+    <div class="modal-wrapper">
+        <h3 class="font-clinic-subtitle" style="margin-bottom: 24px;">Cadastrar Serviço</h3>
+        <form id="formNovoServico">
+            <div class="form-group">
+                <label>Nome do Procedimento</label>
+                <input type="text" name="nome" class="form-control" placeholder="Ex: Limpeza de Pele Profunda" required>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>Duração (Em minutos)</label>
+                    <input type="number" name="duracao_minutos" class="form-control" placeholder="Ex: 60" required>
+                </div>
+                <div class="form-group">
+                    <label>Valor Padrão (R$)</label>
+                    <input type="number" step="0.01" name="preco_padrao" class="form-control" placeholder="Ex: 150.00" required>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalNovo()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar Serviço</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL: EDITAR SERVIÇO -->
+<div class="modal-overlay" id="modalEditarServico">
+    <div class="modal-wrapper">
+        <h3 class="font-clinic-subtitle" style="margin-bottom: 24px;">Editar Serviço</h3>
+        <form id="formEditarServico">
+            <input type="hidden" name="id" id="edit-id">
+            <div class="form-group">
+                <label>Nome do Procedimento</label>
+                <input type="text" name="nome" id="edit-nome" class="form-control" required>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>Duração (Minutos)</label>
+                    <input type="number" name="duracao_minutos" id="edit-duracao" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Valor Padrão (R$)</label>
+                    <input type="number" step="0.01" name="preco_padrao" id="edit-preco" class="form-control" required>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalEditar()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL: EXCLUIR SERVIÇO -->
+<div class="modal-overlay" id="modalExcluirServico">
+    <div class="modal-wrapper">
+        <h3 style="margin-bottom: 16px; color: #ef4444;">Excluir Serviço</h3>
+        <p style="margin-bottom: 24px;">Tem certeza que deseja excluir o serviço <strong id="delete-nome"></strong>?</p>
+        <form id="formExcluirServico">
+            <input type="hidden" name="id" id="delete-id">
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalExcluir()">Cancelar</button>
+                <button type="submit" class="btn btn-primary" style="background-color: #ef4444;">Sim, Excluir</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Funções do Modal Novo Serviço
+    function abrirModalNovo() { document.getElementById('modalNovoServico').classList.add('active'); }
+    function fecharModalNovo() { document.getElementById('modalNovoServico').classList.remove('active'); }
+    
+    document.getElementById('formNovoServico').addEventListener('submit', function(e) {
+        e.preventDefault();
+        fetch("{{ url_for('main.novo_servico') }}", { method: 'POST', body: new FormData(this) })
+        .then(res => res.json())
+        .then(data => { alert(data.mensagem); window.location.reload(); });
+    });
+
+    // Funções do Modal de Edição
+    function abrirModalEditar(id, nome, duracao, preco) {
+        document.getElementById('edit-id').value = id;
+        document.getElementById('edit-nome').value = nome;
+        document.getElementById('edit-duracao').value = duracao;
+        document.getElementById('edit-preco').value = preco;
+        document.getElementById('modalEditarServico').classList.add('active');
+    }
+    function fecharModalEditar() { document.getElementById('modalEditarServico').classList.remove('active'); }
+    
+    document.getElementById('formEditarServico').addEventListener('submit', function(e) {
+        e.preventDefault();
+        fetch("{{ url_for('main.editar_servico') }}", { method: 'POST', body: new FormData(this) })
+        .then(res => res.json())
+        .then(data => { alert(data.mensagem); window.location.reload(); });
+    });
+
+    // Funções do Modal de Exclusão
+    function abrirModalExcluir(id, nome) {
+        document.getElementById('delete-id').value = id;
+        document.getElementById('delete-nome').innerText = nome;
+        document.getElementById('modalExcluirServico').classList.add('active');
+    }
+    function fecharModalExcluir() { document.getElementById('modalExcluirServico').classList.remove('active'); }
+    
+    document.getElementById('formExcluirServico').addEventListener('submit', function(e) {
+        e.preventDefault();
+        fetch("{{ url_for('main.excluir_servico') }}", { method: 'POST', body: new FormData(this) })
+        .then(res => res.json())
+        .then(data => { alert(data.mensagem); window.location.reload(); });
+    });
+</script>
+{% endblock %}

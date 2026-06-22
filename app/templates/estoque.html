@@ -1,0 +1,444 @@
+{% extends "base.html" %}
+
+{% block title %}Estoque | Smell CLINIC{% endblock %}
+
+{% block head %}
+<style>
+    /* Estilos exclusivos para os submódulos do Estoque baseados no seu style.css */
+    .estoque-tabs-container {
+        display: flex;
+        gap: 16px;
+        border-bottom: 2px solid var(--border-color);
+        margin-bottom: 32px;
+        flex-wrap: wrap;
+    }
+    
+    .estoque-tab {
+        background: none;
+        border: none;
+        padding: 12px 24px;
+        font-family: 'Montserrat', sans-serif;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        cursor: pointer;
+        border-bottom: 3px solid transparent;
+        margin-bottom: -2px;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .estoque-tab:hover {
+        color: var(--color-clinic-spa);
+    }
+    
+    .estoque-tab.active {
+        color: var(--color-clinic-spa);
+        border-bottom-color: var(--color-clinic-spa);
+    }
+    
+    .estoque-content {
+        display: none;
+        animation: fadeIn 0.3s ease;
+    }
+    
+    .estoque-content.active {
+        display: block;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Estilização da Tabela de Materiais mantendo o padrão da Agenda */
+    .table-container {
+        overflow-x: auto;
+    }
+    
+    .smell-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+    }
+    
+    .smell-table th {
+        padding: 16px;
+        background-color: #fafafa;
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .smell-table td {
+        padding: 16px;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-dark);
+        font-size: 0.95rem;
+        vertical-align: middle;
+    }
+    
+    .smell-table tr:hover {
+        background-color: #fdf4ff; /* Fundo suave roxo ao passar o mouse */
+    }
+
+    .badge-qtde {
+        background-color: var(--color-smell-primary);
+        color: white;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-weight: bold;
+        display: inline-block;
+    }
+
+    .search-bar-wrapper {
+        position: relative;
+        max-width: 400px;
+        margin-bottom: 24px;
+    }
+
+    .search-bar-wrapper i {
+        position: absolute;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--text-muted);
+    }
+
+    .search-bar-wrapper input {
+        padding-left: 40px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2 style="color: var(--text-dark); font-weight: 600; margin-bottom: 8px;">Gestão de Estoque</h2>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">Gerencie seus produtos, materiais e faça o inventário.</p>
+    </div>
+</div>
+
+<div class="estoque-tabs-container">
+    <button class="estoque-tab active" onclick="abrirSubModulo(event, 'modulo-buscar')">
+        <i class="fa-solid fa-magnifying-glass"></i> Buscar e Ajustar
+    </button>
+    <button class="estoque-tab" onclick="abrirSubModulo(event, 'modulo-cadastrar')">
+        <i class="fa-solid fa-plus"></i> Cadastrar Material
+    </button>
+    <button class="estoque-tab" onclick="abrirSubModulo(event, 'modulo-inventario')">
+        <i class="fa-solid fa-file-excel"></i> Fazer Inventário
+    </button>
+</div>
+
+<div id="modulo-buscar" class="estoque-content active">
+    
+    <div class="search-bar-wrapper">
+        <i class="fa-solid fa-search"></i>
+        <input type="text" id="inputBusca" class="form-control" placeholder="Buscar por código ou descrição..." onkeyup="filtrarMateriais()">
+    </div>
+
+    <div class="agenda-container table-container">
+        <table class="smell-table" id="tabelaMateriais">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Descrição</th>
+                    <th>Categoria</th>
+                    <th>Valor Unit.</th>
+                    <th>Em Estoque</th>
+                    <th style="text-align: right;">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in produtos %}
+                <tr class="linha-produto">
+                    <td class="col-codigo">{{ p.codigo }}</td>
+                    <td class="col-descricao" style="font-weight: 600;">{{ p.descricao }}</td>
+                    <td>{{ p.categoria_nome if p.categoria_nome else '---' }}</td>
+                    <td>R$ {{ "%.2f"|format(p.valor_unitario) }}</td>
+                    <td><span class="badge-qtde">{{ p.quantidade }}</span></td>
+                    <td style="text-align: right; white-space: nowrap;">
+                        <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; margin-right: 4px; background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;" onclick="abrirModalEditar('{{ p.codigo }}', '{{ p.descricao }}', '{{ p.categoria_nome if p.categoria_nome else '' }}', {{ p.valor_unitario }})" title="Editar Produto">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                        
+                        <button class="btn btn-primary" style="padding: 6px 12px; font-size: 0.8rem; margin-right: 4px;" onclick="abrirModalAjuste('{{ p.codigo }}', '{{ p.descricao }}', {{ p.quantidade }})" title="Ajustar Estoque">
+                            <i class="fa-solid fa-scale-balanced"></i>
+                        </button>
+                        
+                        <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; background-color: #fee2e2; color: #ef4444; border: none;" onclick="inativarProduto('{{ p.codigo }}')" title="Remover Material">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr id="linhaVazia">
+                    <td colspan="6" style="text-align: center; padding: 32px; color: var(--text-muted);">
+                        <i class="fa-solid fa-boxes-stacked" style="font-size: 2rem; margin-bottom: 12px; opacity: 0.5;"></i><br>
+                        Nenhum material cadastrado ou ativo no estoque.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="modulo-cadastrar" class="estoque-content">
+    <div class="agenda-container" style="max-width: 600px; padding: 32px;">
+        <h3 style="margin-bottom: 24px; color: var(--color-clinic-spa);"><i class="fa-solid fa-box-open" style="margin-right: 8px;"></i> Ficha do Produto</h3>
+        
+        <form id="formNovoProduto">
+            <div class="form-group">
+                <label>Descrição do Item</label>
+                <input type="text" class="form-control" name="descricao" placeholder="Ex: Seringa Descartável 5ml" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Categoria</label>
+                <input type="text" class="form-control" name="categoria" placeholder="Ex: Consumíveis, Dermocosméticos..." list="listaCategorias" required>
+                <datalist id="listaCategorias">
+                    {% for c in categorias %}
+                        <option value="{{ c.nome }}">
+                    {% endfor %}
+                </datalist>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>Valor Unitário (R$)</label>
+                    <input type="number" step="0.01" class="form-control" name="valor_unitario" value="0.00" required>
+                </div>
+                <div class="form-group">
+                    <label>Quantidade Inicial no Estoque</label>
+                    <input type="number" class="form-control" name="quantidade" value="0" required>
+                </div>
+            </div>
+
+            <div style="margin-top: 32px; text-align: right;">
+                <button type="submit" class="btn btn-primary" style="width: 100%;">
+                    <i class="fa-solid fa-check" style="margin-right: 8px;"></i> Salvar e Gerar Código
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="modulo-inventario" class="estoque-content">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+        
+        <div class="agenda-container" style="padding: 32px; text-align: center;">
+            <i class="fa-solid fa-download" style="font-size: 3rem; color: var(--color-smell-primary); margin-bottom: 16px;"></i>
+            <h3 style="margin-bottom: 16px; color: var(--text-dark);">Passo 1: Exportar Planilha</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 24px; line-height: 1.5;">
+                Baixe a ficha de contagem cega. Ela contém todos os seus materiais ativos. Preencha a coluna "Quantidade Nova" com o saldo físico real que você contou.
+            </p>
+            <a href="{{ url_for('main.exportar_inventario') }}" class="btn btn-primary" style="width: 100%; background-color: var(--color-smell-primary);">
+                Baixar Ficha de Excel
+            </a>
+        </div>
+
+        <div class="agenda-container" style="padding: 32px; text-align: center;">
+            <i class="fa-solid fa-upload" style="font-size: 3rem; color: #f59e0b; margin-bottom: 16px;"></i>
+            <h3 style="margin-bottom: 16px; color: var(--text-dark);">Passo 2: Importar Contagem</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 24px; line-height: 1.5;">
+                Com a planilha salva e preenchida, envie-a de volta para o sistema. O software atualizará automaticamente o estoque de todos os itens modificados.
+            </p>
+            <form id="formImportarInventario">
+                <input type="file" class="form-control" name="file" accept=".xlsx, .xls" required style="margin-bottom: 16px;">
+                <button type="submit" class="btn" style="width: 100%; background-color: #f59e0b; color: white; border: none;">
+                    Atualizar Estoque com Excel
+                </button>
+            </form>
+        </div>
+
+    </div>
+</div>
+
+
+<div class="modal-overlay" id="modalAjusteEstoque">
+    <form id="formAjusteEstoque" class="modal-wrapper">
+        <h3 style="margin-bottom: 8px; color: var(--text-dark);">Ajustar Saldo</h3>
+        <p id="ajusteDescricao" style="font-weight: 600; color: var(--color-clinic-spa); margin-bottom: 24px; font-size: 1.1rem;"></p>
+        
+        <input type="hidden" name="codigo" id="ajusteCodigo">
+        
+        <div class="form-group">
+            <label>Nova Quantidade (Saldo Real)</label>
+            <input type="number" class="form-control" name="quantidade" id="ajusteQuantidade" required style="font-size: 1.2rem; font-weight: bold; text-align: center;">
+        </div>
+        
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;">
+            <button type="button" class="btn btn-secondary" onclick="fecharModalAjuste()">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar Alteração</button>
+        </div>
+    </form>
+</div>
+
+<div class="modal-overlay" id="modalEditarProduto">
+    <form id="formEditarProduto" class="modal-wrapper">
+        <h3 style="margin-bottom: 24px; color: var(--text-dark);"><i class="fa-solid fa-pen-to-square"></i> Editar Produto</h3>
+        
+        <input type="hidden" name="codigo" id="editarCodigo">
+        
+        <div class="form-group">
+            <label>Descrição do Item</label>
+            <input type="text" class="form-control" name="descricao" id="editarDescricao" required>
+        </div>
+        
+        <div class="form-group">
+            <label>Categoria</label>
+            <input type="text" class="form-control" name="categoria" id="editarCategoria" list="listaCategoriasEdicao" required>
+            <datalist id="listaCategoriasEdicao">
+                {% for c in categorias %}
+                    <option value="{{ c.nome }}">
+                {% endfor %}
+            </datalist>
+        </div>
+        
+        <div class="form-group">
+            <label>Valor Unitário (R$)</label>
+            <input type="number" step="0.01" class="form-control" name="valor_unitario" id="editarValor" required>
+        </div>
+        
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;">
+            <button type="button" class="btn btn-secondary" onclick="fecharModalEditar()">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+        </div>
+    </form>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // SISTEMA DE ABAS (SUBMÓDULOS)
+    function abrirSubModulo(evento, moduloId) {
+        document.querySelectorAll('.estoque-tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        
+        document.querySelectorAll('.estoque-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        
+        evento.currentTarget.classList.add('active');
+        document.getElementById(moduloId).classList.add('active');
+    }
+
+    // BUSCA EM TEMPO REAL NA TABELA
+    function filtrarMateriais() {
+        const termo = document.getElementById('inputBusca').value.toLowerCase();
+        const linhas = document.querySelectorAll('.linha-produto');
+        
+        linhas.forEach(linha => {
+            const codigo = linha.querySelector('.col-codigo').innerText.toLowerCase();
+            const descricao = linha.querySelector('.col-descricao').innerText.toLowerCase();
+            
+            if (codigo.includes(termo) || descricao.includes(termo)) {
+                linha.style.display = '';
+            } else {
+                linha.style.display = 'none';
+            }
+        });
+    }
+
+    // CONTROLE DO MODAL NATIVO: AJUSTAR ESTOQUE
+    function abrirModalAjuste(codigo, descricao, quantidadeAtual) {
+        document.getElementById('ajusteCodigo').value = codigo;
+        document.getElementById('ajusteDescricao').innerText = descricao;
+        document.getElementById('ajusteQuantidade').value = quantidadeAtual;
+        document.getElementById('modalAjusteEstoque').classList.add('active');
+    }
+    function fecharModalAjuste() {
+        document.getElementById('modalAjusteEstoque').classList.remove('active');
+    }
+
+    // CONTROLE DO MODAL NATIVO: EDITAR PRODUTO
+    function abrirModalEditar(codigo, descricao, categoria, valor) {
+        document.getElementById('editarCodigo').value = codigo;
+        document.getElementById('editarDescricao').value = descricao;
+        document.getElementById('editarCategoria').value = categoria;
+        document.getElementById('editarValor').value = valor;
+        document.getElementById('modalEditarProduto').classList.add('active');
+    }
+    function fecharModalEditar() {
+        document.getElementById('modalEditarProduto').classList.remove('active');
+    }
+
+    // ===============================================
+    // REQUISIÇÕES (AJAX) PARA O BACKEND
+    // ===============================================
+    
+    // 1. Cadastrar Produto
+    document.getElementById('formNovoProduto').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const response = await fetch("{{ url_for('main.novo_produto') }}", { method: 'POST', body: formData });
+        const data = await response.json();
+        alert(data.mensagem);
+        location.reload();
+    });
+
+    // 2. Acertar Estoque Unitário
+    document.getElementById('formAjusteEstoque').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const response = await fetch("{{ url_for('main.ajustar_estoque_unitario') }}", { method: 'POST', body: formData });
+        const data = await response.json();
+        alert(data.mensagem);
+        location.reload();
+    });
+
+    // 3. Editar Produto (NOVO)
+    document.getElementById('formEditarProduto').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const response = await fetch("{{ url_for('main.editar_produto') }}", { method: 'POST', body: formData });
+        const data = await response.json();
+        alert(data.mensagem);
+        if(!data.erro) {
+            location.reload();
+        }
+    });
+
+    // 4. Inativar Produto
+    async function inativarProduto(codigo) {
+        if(confirm("Tem certeza que deseja inativar este material? Ele deixará de aparecer nas buscas e nos próximos inventários.")) {
+            const formData = new FormData();
+            formData.append('codigo', codigo);
+            const response = await fetch("{{ url_for('main.inativar_produto') }}", { method: 'POST', body: formData });
+            const data = await response.json();
+            alert(data.mensagem);
+            location.reload();
+        }
+    }
+
+    // 5. Importar Planilha de Inventário
+    document.getElementById('formImportarInventario').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const btn = this.querySelector('button[type="submit"]');
+        const textoOriginal = btn.innerText;
+        btn.innerText = "Processando Planilha...";
+        btn.disabled = true;
+
+        try {
+            const response = await fetch("{{ url_for('main.importar_inventario') }}", { method: 'POST', body: formData });
+            const data = await response.json();
+            alert(data.mensagem);
+            if(!data.erro) location.reload();
+        } catch (error) {
+            alert("Ocorreu um erro ao enviar a planilha.");
+        } finally {
+            btn.innerText = textoOriginal;
+            btn.disabled = false;
+        }
+    });
+</script>
+{% endblock %}

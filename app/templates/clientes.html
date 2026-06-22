@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block title %}Clientes - Smell CLINIC | SPA{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2 class="font-clinic-subtitle" style="font-weight: 600; font-size: 1.5rem;">Gestão de Clientes</h2>
+        <span style="color: var(--text-muted); font-size: 0.9rem;">Cadastros, histórico e evoluções</span>
+    </div>
+    <div style="display: flex; gap: 16px;">
+        <form method="GET" action="{{ url_for('main.clientes') }}" style="display: flex; gap: 8px;">
+            <input type="text" name="cpf" class="form-control" placeholder="Buscar por CPF..." value="{{ cpf_busca }}">
+            <button type="submit" class="btn btn-secondary"><i class="fa-solid fa-search"></i></button>
+            {% if cpf_busca %}
+                <a href="{{ url_for('main.clientes') }}" class="btn btn-secondary"><i class="fa-solid fa-xmark"></i></a>
+            {% endif %}
+        </form>
+        <button class="btn btn-primary" onclick="abrirModalNovo()"><i class="fa-solid fa-plus" style="margin-right: 8px;"></i> Novo Cliente</button>
+    </div>
+</div>
+
+<div class="agenda-container" style="padding: 24px;">
+    <table style="width: 100%; text-align: left; border-collapse: collapse;">
+        <thead>
+            <tr style="border-bottom: 2px solid var(--border-color);">
+                <th style="padding: 12px 8px;">Nome Completo</th>
+                <th style="padding: 12px 8px;">CPF</th>
+                <th style="padding: 12px 8px;">Telefone / WhatsApp</th>
+                <th style="padding: 12px 8px;">Data Nasc.</th>
+                <th style="padding: 12px 8px; text-align: right;">Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if clientes %}
+                {% for c in clientes %}
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 12px 8px; font-weight: 500;">{{ c.nome }}</td>
+                    <td style="padding: 12px 8px;">{{ c.cpf }}</td>
+                    <td style="padding: 12px 8px;">+{{ c.telefone }}</td>
+                    <td style="padding: 12px 8px;">{{ c.data_nascimento }}</td>
+                    <td style="padding: 12px 8px; text-align: right;">
+                        <a href="{{ url_for('main.prontuario', cliente_id=c.id) }}" class="btn btn-primary" style="padding: 6px 12px; margin-right: 4px; background-color: var(--color-smell-primary);" title="Acessar Prontuário">
+                            <i class="fa-solid fa-clipboard-user"></i>
+                        </a>
+                        <button class="btn btn-secondary" style="padding: 6px 12px; margin-right: 4px;" 
+                                onclick="abrirModalEditar('{{ c.id }}', '{{ c.nome }}', '{{ c.cpf }}', '{{ c.telefone }}', '{{ c.data_nascimento }}', '{{ c.instagram or '' }}', '{{ c.profissao or '' }}')" title="Editar Cadastro">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                        <button class="btn btn-secondary" style="padding: 6px 12px; color: #ef4444;" 
+                                onclick="abrirModalExcluir('{{ c.id }}', '{{ c.nome }}')" title="Excluir Definitivamente">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                        Nenhum cliente encontrado na base de dados.
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<div class="modal-overlay" id="modalNovoCliente">
+    <div class="modal-wrapper">
+        <h3 class="font-clinic-subtitle" style="margin-bottom: 24px;">Cadastrar Cliente</h3>
+        <form id="formNovoCliente">
+            <div class="form-group">
+                <label>Nome Completo</label>
+                <input type="text" name="nome" class="form-control" required>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>CPF (Apenas números)</label>
+                    <input type="text" name="cpf" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Data de Nascimento</label>
+                    <input type="date" name="data_nascimento" class="form-control" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Telefone / WhatsApp</label>
+                <input type="text" name="telefone" class="form-control" placeholder="Ex: 21 99815-1052 (O DDI 55 é automático)" required>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>Instagram (@)</label>
+                    <input type="text" name="instagram" class="form-control" placeholder="Ex: @joaosilva">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>Profissão</label>
+                    <input type="text" name="profissao" class="form-control">
+                </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalNovo()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar Cliente</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="modalEditarCliente">
+    <div class="modal-wrapper">
+        <h3 class="font-clinic-subtitle" style="margin-bottom: 24px;">Editar Cliente</h3>
+        <form id="formEditarCliente">
+            <input type="hidden" name="id" id="edit-id">
+            <div class="form-group">
+                <label>Nome Completo</label>
+                <input type="text" name="nome" id="edit-nome" class="form-control" required>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>CPF (Apenas números)</label>
+                    <input type="text" name="cpf" id="edit-cpf" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Data de Nascimento</label>
+                    <input type="date" name="data_nascimento" id="edit-data" class="form-control" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Telefone / WhatsApp</label>
+                <input type="text" name="telefone" id="edit-telefone" class="form-control" placeholder="Ex: 21 99815-1052" required>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>Instagram (@)</label>
+                    <input type="text" name="instagram" id="edit-instagram" class="form-control" placeholder="Ex: @joaosilva">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>Profissão</label>
+                    <input type="text" name="profissao" id="edit-profissao" class="form-control">
+                </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalEditar()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="modalExcluirCliente">
+    <div class="modal-wrapper">
+        <h3 style="margin-bottom: 16px; color: #ef4444;">Excluir Cliente</h3>
+        <p style="margin-bottom: 24px;">Tem certeza que deseja excluir o(a) cliente <strong id="delete-nome"></strong>?</p>
+        <form id="formExcluirCliente">
+            <input type="hidden" name="id" id="delete-id">
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalExcluir()">Cancelar</button>
+                <button type="submit" class="btn btn-primary" style="background-color: #ef4444;">Sim, Excluir</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function abrirModalNovo() { document.getElementById('modalNovoCliente').classList.add('active'); }
+    function fecharModalNovo() { document.getElementById('modalNovoCliente').classList.remove('active'); }
+    
+    document.getElementById('formNovoCliente').addEventListener('submit', function(e) {
+        e.preventDefault();
+        fetch("{{ url_for('main.novo_cliente') }}", { method: 'POST', body: new FormData(this) })
+        .then(res => res.json())
+        .then(data => { alert(data.mensagem); window.location.reload(); });
+    });
+
+    function abrirModalEditar(id, nome, cpf, telefone, data, instagram, profissao) {
+        document.getElementById('edit-id').value = id;
+        document.getElementById('edit-nome').value = nome;
+        document.getElementById('edit-cpf').value = cpf;
+        document.getElementById('edit-telefone').value = telefone;
+        document.getElementById('edit-data').value = data;
+        document.getElementById('edit-instagram').value = instagram !== 'None' ? instagram : '';
+        document.getElementById('edit-profissao').value = profissao !== 'None' ? profissao : '';
+        document.getElementById('modalEditarCliente').classList.add('active');
+    }
+    function fecharModalEditar() { document.getElementById('modalEditarCliente').classList.remove('active'); }
+    
+    document.getElementById('formEditarCliente').addEventListener('submit', function(e) {
+        e.preventDefault();
+        fetch("{{ url_for('main.editar_cliente') }}", { method: 'POST', body: new FormData(this) })
+        .then(res => res.json())
+        .then(data => { alert(data.mensagem); window.location.reload(); });
+    });
+
+    function abrirModalExcluir(id, nome) {
+        document.getElementById('delete-id').value = id;
+        document.getElementById('delete-nome').innerText = nome;
+        document.getElementById('modalExcluirCliente').classList.add('active');
+    }
+    function fecharModalExcluir() { document.getElementById('modalExcluirCliente').classList.remove('active'); }
+    
+    document.getElementById('formExcluirCliente').addEventListener('submit', function(e) {
+        e.preventDefault();
+        fetch("{{ url_for('main.excluir_cliente') }}", { method: 'POST', body: new FormData(this) })
+        .then(res => res.json())
+        .then(data => { alert(data.mensagem); window.location.reload(); });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{% block title %}Smell CLINIC | SPA{% endblock %}</title>
+    
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32x32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon-16x16.png') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='img/site.webmanifest') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=3.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    {% block head %}{% endblock %}
+</head>
+<body {% if modo_cliente %}style="display: block; background: #f8fafc;"{% endif %}>
+
+    {% if not modo_cliente %}
+        <div class="mobile-topbar">
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <button class="mobile-menu-btn" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+                <h1 class="font-smell-title" style="color: white; margin: 0; font-size: 1.5rem;">Smell <span style="font-family: 'Montserrat', sans-serif; font-size: 0.8rem; letter-spacing: 1px; color: #bbf7d0;">SPA</span></h1>
+            </div>
+            <span id="whatsapp-indicator-mobile" class="whatsapp-status-indicator disconnected"></span>
+        </div>
+
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <h1 class="font-smell-title">Smell</h1>
+                <span class="font-clinic-subtitle">CLINIC | SPA</span>
+            </div>
+            
+ <ul class="sidebar-menu">
+    <li class="{% if request.endpoint == 'main.agenda' %}active{% endif %}">
+        <a href="{{ url_for('main.agenda') }}"><i class="fa-solid fa-calendar-days" style="margin-right: 12px;"></i> Agenda</a>
+    </li>
+    <li class="{% if request.endpoint == 'main.clientes' %}active{% endif %}">
+        <a href="{{ url_for('main.clientes') }}"><i class="fa-solid fa-user-group" style="margin-right: 12px;"></i> Clientes</a>
+    </li>
+    <li class="{% if request.endpoint == 'main.servicos' %}active{% endif %}">
+        <a href="{{ url_for('main.servicos') }}"><i class="fa-solid fa-spa" style="margin-right: 12px;"></i> Serviços</a>
+    </li>
+    <li class="{% if request.endpoint == 'main.estoque' %}active{% endif %}">
+        <a href="{{ url_for('main.estoque') }}"><i class="fa-solid fa-boxes-stacked" style="margin-right: 12px;"></i> Estoque</a>
+    </li>
+    <li class="{% if request.endpoint == 'main.financeiro' %}active{% endif %}">
+        <a href="{{ url_for('main.financeiro') }}"><i class="fa-solid fa-wallet" style="margin-right: 12px;"></i> Financeiro</a>
+    </li>
+    <li class="{% if request.endpoint == 'main.relatorios' %}active{% endif %}">
+        <a href="{{ url_for('main.relatorios') }}"><i class="fa-solid fa-chart-pie" style="margin-right: 12px;"></i> Relatórios</a>
+    </li>
+    <li class="{% if request.endpoint == 'main.configuracoes' %}active{% endif %}">
+        <a href="{{ url_for('main.configuracoes') }}">
+            <i class="fa-solid fa-gear" style="margin-right: 12px;"></i> Configurações
+            <span id="whatsapp-indicator" class="whatsapp-status-indicator disconnected"></span>
+        </a>
+    </li>
+</ul>
+        </aside>
+    {% endif %}
+
+    <main class="main-content" {% if modo_cliente %}style="margin: 0 auto; max-width: 800px; padding: 20px;"{% endif %}>
+        {% if modo_cliente %}
+        <div style="text-align: center; margin-bottom: 32px; padding-top: 20px;">
+            <img src="{{ url_for('static', filename='img/LogoSmell.png') }}" alt="Smell Clinic" style="height: 80px;">
+            <h2 class="font-clinic-subtitle" style="margin-top: 16px;">Autoatendimento</h2>
+        </div>
+        {% endif %}
+        
+        {% block content %}{% endblock %}
+    </main>
+
+    {% if not modo_cliente %}
+    
+    <div id="backupToast" class="backup-toast" style="position: fixed; bottom: 30px; right: 30px; z-index: 9999;">
+        <div style="font-weight: bold; font-size: 0.95rem; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-cloud-arrow-up" style="color: #10b981;"></i> Backup Diário Automático
+        </div>
+        <div id="backupToastMsg" style="font-size: 0.8rem; color: var(--text-muted);">Verificando sistema...</div>
+        <div class="backup-progress-bg">
+            <div id="backupProgressBar" class="backup-progress-bar"></div>
+        </div>
+    </div>
+
+    <div class="setup-modal-overlay" id="setupBackupModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 10000;">
+        <div class="modal-wrapper" style="max-width: 500px; text-align: center;">
+            <i class="fa-solid fa-hard-drive" style="font-size: 3rem; color: var(--color-smell-primary); margin-bottom: 16px;"></i>
+            <h3 style="margin-bottom: 8px; font-weight: 600;">Configuração Obrigatória de Segurança</h3>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 24px; line-height: 1.5;">
+                Bem-vindo(a) ao sistema Smell CLINIC! Para garantir que seus clientes, finanças e fotos nunca sejam perdidos, você precisa nos dizer em qual pasta do seu computador o <b>Backup Diário Automático</b> deve ser salvo.
+            </p>
+            
+            <input type="text" id="inputPastaSetup" class="form-control" placeholder="Caminho da pasta selecionada..." readonly style="margin-bottom: 16px; background-color: #f1f5f9; text-align: center;">
+            
+            <button onclick="escolherPastaSetup()" class="btn btn-secondary" style="width: 100%; margin-bottom: 12px;">
+                <i class="fa-solid fa-folder-open" style="margin-right: 8px;"></i> Clicar para Escolher a Pasta
+            </button>
+            <button onclick="salvarPastaSetup()" class="btn btn-primary" style="width: 100%; background-color: var(--color-smell-primary);">
+                <i class="fa-solid fa-check" style="margin-right: 8px;"></i> Salvar e Iniciar Sistema
+            </button>
+        </div>
+    </div>
+    
+    {% endif %}
+
+    {% block scripts %}{% endblock %}
+
+    {% if not modo_cliente %}
+    <script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('open');
+            if(sidebar.classList.contains('open')) {
+                overlay.style.display = 'block';
+                setTimeout(() => overlay.classList.add('active'), 10);
+            } else {
+                overlay.classList.remove('active');
+                setTimeout(() => overlay.style.display = 'none', 300);
+            }
+        }
+
+        function atualizarStatusWhatsapp(conectado) {
+            const indicadores = [document.getElementById('whatsapp-indicator'), document.getElementById('whatsapp-indicator-mobile')];
+            indicadores.forEach(indicador => {
+                if(indicador) {
+                    if (conectado) {
+                        indicador.classList.remove('disconnected');
+                        indicador.classList.add('connected');
+                    } else {
+                        indicador.classList.remove('connected');
+                        indicador.classList.add('disconnected');
+                    }
+                }
+            });
+        }
+
+        function checarStatusWhatsapp() {
+            fetch("{{ url_for('main.whatsapp_status') }}")
+            .then(res => res.json())
+            .then(data => { atualizarStatusWhatsapp(data.conectado); })
+            .catch(err => console.log("Aguardando motor..."));
+        }
+
+        setInterval(checarStatusWhatsapp, 5000);
+        window.addEventListener('load', checarStatusWhatsapp);
+
+        // =========================================================
+        // MOTOR DE BACKUP FANTASMA
+        // =========================================================
+        let loopProgresso;
+
+        function iniciarLeituraDeProgresso() {
+            document.getElementById('backupToast').classList.add('show');
+            loopProgresso = setInterval(() => {
+                fetch('/api/backup/progresso')
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('backupToastMsg').innerText = data.mensagem;
+                    document.getElementById('backupProgressBar').style.width = data.progresso + '%';
+                    
+                    if(!data.em_andamento && data.progresso === 100) {
+                        clearInterval(loopProgresso);
+                        setTimeout(() => { document.getElementById('backupToast').classList.remove('show'); }, 2000);
+                    }
+                });
+            }, 1000);
+        }
+
+        function verificarSetupBackup() {
+            fetch('/api/sistema/status-backup')
+            .then(res => res.json())
+            .then(data => {
+                if(!data.pasta_configurada) {
+                    // Força display flex com as regras blindadas inline
+                    document.getElementById('setupBackupModal').style.display = 'flex';
+                } else if(data.precisa_backup) {
+                    fetch('/api/backup/iniciar-fantasma', { method: 'POST' })
+                    .then(r => r.json())
+                    .then(res => {
+                        if(res.status === 'iniciado') { iniciarLeituraDeProgresso(); }
+                    });
+                }
+            });
+        }
+        
+        window.addEventListener('load', verificarSetupBackup);
+
+        function escolherPastaSetup() {
+            fetch('/configuracoes/selecionar-pasta')
+            .then(res => res.json())
+            .then(data => {
+                if(data.pasta) document.getElementById('inputPastaSetup').value = data.pasta;
+            });
+        }
+
+        function salvarPastaSetup() {
+            const pasta = document.getElementById('inputPastaSetup').value;
+            if(!pasta) { alert('Você precisa selecionar uma pasta antes de continuar.'); return; }
+            
+            const formData = new FormData();
+            formData.append('pasta_backup', pasta);
+            
+            fetch('/api/backup/salvar-pasta', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('setupBackupModal').style.display = 'none';
+                verificarSetupBackup(); 
+            });
+        }
+    </script>
+    {% endif %}
+</body>
+</html>
