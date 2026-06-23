@@ -4,7 +4,6 @@ from app.estoque_database import get_estoque_db_connection
 import os
 import shutil
 import datetime
-import subprocess
 import sys
 import sqlite3
 import json
@@ -15,8 +14,11 @@ import time
 import random
 import pandas as pd
 import io
+import subprocess
 
 main_bp = Blueprint('main', __name__)
+
+# Variável para rastrear o processo do bot do WhatsApp
 bot_process = None
 
 # Variável global para rastrear a barra de progresso do backup
@@ -770,13 +772,26 @@ def agendamentos_mes():
 @main_bp.route('/whatsapp/iniciar-motor', methods=['POST'])
 def iniciar_motor_whatsapp():
     global bot_process
+    
+    # Se já existir um processo ativo, não inicia outro
     if bot_process is None or bot_process.poll() is not None:
         qr_path = os.path.join(current_app.root_path, '..', 'qr_code.png')
-        if os.path.exists(qr_path): os.remove(qr_path)
+        if os.path.exists(qr_path):
+            os.remove(qr_path)
+            
         cwd = os.path.abspath(os.path.join(current_app.root_path, '..'))
-        bot_process = subprocess.Popen('node bot.js', cwd=cwd, shell=True)
+        
+        # Inicia o motor do WhatsApp de forma "invisível" no Windows
+        if sys.platform == 'win32':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            bot_process = subprocess.Popen('node bot.js', cwd=cwd, shell=True, startupinfo=startupinfo)
+        else:
+            bot_process = subprocess.Popen('node bot.js', cwd=cwd, shell=True)
+            
         return jsonify({"status": "sucesso", "mensagem": "Motor do WhatsApp iniciado em background."})
-    else: return jsonify({"status": "aviso", "mensagem": "O motor já está em execução."})
+    else:
+        return jsonify({"status": "aviso", "mensagem": "O motor já está em execução."})
 
 @main_bp.route('/whatsapp/status', methods=['GET'])
 def whatsapp_status():
