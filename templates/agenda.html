@@ -1,0 +1,580 @@
+{% extends "base.html" %}
+
+{% block title %}Agenda - Smell CLINIC | SPA{% endblock %}
+
+{% block content %}
+<style>
+    /* Container flexível para estabilidade total das colunas (Não quebra o layout) */
+    .agenda-board {
+        display: flex;
+        overflow-x: auto;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        min-height: 60vh;
+    }
+
+    /* Coluna Lateral Esquerda (Apenas as Horas) */
+    .agenda-column-time {
+        width: 80px;
+        flex-shrink: 0;
+        border-right: 1px solid var(--border-color);
+        background: #f8fafc;
+    }
+
+    /* Colunas dos Profissionais */
+    .agenda-column-prof {
+        flex: 1;
+        min-width: 240px;
+        border-right: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+    }
+    .agenda-column-prof:last-child {
+        border-right: none;
+    }
+
+    /* Cabeçalhos (Nome do Profissional / 'Horário') */
+    .agenda-header-cell {
+        height: 50px;
+        padding: 12px;
+        font-weight: bold;
+        text-align: center;
+        border-bottom: 1px solid var(--border-color);
+        background: #ffffff;
+        color: var(--text-dark);
+        position: sticky;
+        top: 0;
+        z-index: 20;
+    }
+
+    /* Células da coluna de tempo (Hora Cheia e Meia Hora) */
+    .agenda-time-cell {
+        height: 60px;
+        padding: 4px 8px;
+        color: var(--text-muted);
+        text-align: right;
+        box-sizing: border-box;
+        position: relative;
+    }
+    /* Estilo para Hora Cheia (ex: 10:00) */
+    .agenda-time-cell.time-full span {
+        position: absolute;
+        top: -10px;
+        right: 8px;
+        background: #f8fafc;
+        padding: 0 4px;
+        font-weight: 700;
+        font-size: 0.9rem;
+        color: var(--text-dark);
+    }
+    /* Estilo para Meia Hora (ex: 10:30) */
+    .agenda-time-cell.time-half span {
+        position: absolute;
+        top: -8px;
+        right: 8px;
+        background: #f8fafc;
+        padding: 0 4px;
+        font-weight: 500;
+        font-size: 0.75rem;
+        color: #94a3b8;
+    }
+
+    /* Célula onde os cards se encaixam (Grade da Agenda) */
+    .agenda-slot-cell {
+        height: 60px;
+        position: relative; 
+        box-sizing: border-box;
+        border-bottom: 1px dashed #cbd5e1;
+    }
+    /* Célula que fecha a hora redonda */
+    .agenda-slot-cell.half-hour {
+        border-bottom: 1px solid #94a3b8;
+    }
+
+    /* Estética do Card de Atendimento */
+    .appointment-card {
+        border-radius: 6px;
+        padding: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        border-left: 4px solid transparent;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        flex-direction: column;
+        box-sizing: border-box;
+        overflow: hidden;
+        z-index: 10;
+    }
+    
+    .appointment-card:hover {
+        transform: scale(1.02);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        z-index: 50 !important;
+    }
+    
+    /* Cores dos Status */
+    .status-agendado { background-color: #fef9c3; border-left-color: #eab308; color: #854d0e; }
+    .status-confirmado { background-color: #dcfce7; border-left-color: #22c55e; color: #166534; }
+    .status-presente { background-color: #dbeafe; border-left-color: #3b82f6; color: #1e3a8a; }
+    .status-atendimento { background-color: #f3e8ff; border-left-color: #a855f7; color: #581c87; }
+    .status-concluido { background-color: #f1f5f9; border-left-color: #64748b; color: #334155; }
+    .status-atrasado { background-color: #fee2e2; border-left-color: #ef4444; color: #991b1b; }
+
+    /* Calendário Mensal */
+    .calendario-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+        text-align: center;
+    }
+    .calendario-header {
+        font-weight: bold;
+        color: var(--text-muted);
+        padding: 8px;
+    }
+    .calendario-dia {
+        background: #fff;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 16px 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 80px;
+    }
+    .calendario-dia:hover {
+        border-color: var(--color-clinic-spa);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    .calendario-dia.hoje {
+        border: 2px solid var(--color-smell-primary);
+        background: #fdf4ff;
+    }
+    .badge-agendamento {
+        margin-top: 8px;
+        background-color: var(--color-smell-primary);
+        color: #fff;
+        font-size: 0.7rem;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-weight: bold;
+    }
+</style>
+
+<div class="page-header">
+    <div>
+        <h2 class="font-clinic-subtitle" style="font-weight: 600; font-size: 1.5rem;">Agenda de Atendimentos</h2>
+        <span style="color: var(--text-muted); font-size: 0.9rem;">Gerenciamento de horários e profissionais</span>
+    </div>
+    
+    <div style="display: flex; align-items: center; gap: 16px;">
+        <button class="btn btn-primary" id="btnVisaoDia" onclick="mudarVisao('dia')">Visão Diária</button>
+        <button class="btn btn-secondary" id="btnVisaoMes" onclick="mudarVisao('mes')">Visão Mensal</button>
+        
+        <input type="date" id="data_agenda" class="form-control" value="{{ data_hoje }}" style="width: auto; font-weight: bold;" onchange="window.location.href='/?data=' + this.value">
+        <button class="btn btn-primary" onclick="abrirModal()" style="background-color: var(--color-smell-primary);">+ Novo Agendamento</button>
+    </div>
+</div>
+
+<div id="visao-diaria" class="agenda-container" style="padding: 0; background: transparent; border: none; box-shadow: none;">
+    <div class="agenda-board">
+        <div class="agenda-column-time">
+            <div class="agenda-header-cell">Horário</div>
+            {% for hora in range(abertura, fechamento) %}
+                <div class="agenda-time-cell time-full"><span>{{ "%02d:00" | format(hora) }}</span></div>
+                <div class="agenda-time-cell time-half"><span>{{ "%02d:30" | format(hora) }}</span></div>
+            {% endfor %}
+        </div>
+
+        {% if profissionais %}
+            {% for prof in profissionais %}
+            <div class="agenda-column-prof">
+                <div class="agenda-header-cell">{{ prof.nome }}</div>
+                {% for hora in range(abertura, fechamento) %}
+                    <div class="agenda-slot-cell" data-prof="{{ prof.id }}" data-time="{{ '%02d:00' | format(hora) }}"></div>
+                    <div class="agenda-slot-cell half-hour" data-prof="{{ prof.id }}" data-time="{{ '%02d:30' | format(hora) }}"></div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <div style="flex: 1; padding: 40px; text-align: center; color: var(--text-muted); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <i class="fa-solid fa-user-doctor" style="font-size: 3rem; margin-bottom: 16px; opacity: 0.5;"></i>
+                <h3>Nenhum profissional cadastrado</h3>
+                <p>Acesse o painel de Configurações para adicionar a sua equipe.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div id="visao-mensal" class="agenda-container" style="display: none; padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <button class="btn btn-secondary" onclick="mudarMes(-1)">&lt; Mês Anterior</button>
+        <h3 id="mes-atual-label" class="font-clinic-subtitle" style="font-size: 1.3rem; margin: 0;"></h3>
+        <button class="btn btn-secondary" onclick="mudarMes(1)">Próximo Mês &gt;</button>
+    </div>
+    <div class="calendario-grid" id="calendario-dias"></div>
+</div>
+
+<!-- Modal: Novo Agendamento -->
+<div class="modal-overlay" id="modalAgendamento">
+    <div class="modal-wrapper">
+        <h3 class="font-clinic-subtitle" style="margin-bottom: 24px;">Novo Agendamento</h3>
+        
+        <form id="formNovoAgendamento">
+            <div class="form-group">
+                <label>Cliente (CPF ou Nome completo)</label>
+                <input type="text" name="cliente_nome_cpf" class="form-control" placeholder="Buscar cliente..." required>
+            </div>
+            <div class="form-group">
+                <label>Profissional</label>
+                <select name="profissional_id" class="form-control" required>
+                    <option value="">Selecione...</option>
+                    {% for prof in profissionais %}
+                        <option value="{{ prof.id }}">{{ prof.nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Procedimento / Serviço</label>
+                <select name="servico_id" class="form-control" required>
+                    <option value="">Selecione o serviço...</option>
+                    {% for s in servicos %}
+                        <option value="{{ s.id }}">{{ s.nome }} ({{ s.duracao_minutos }} min)</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Data e Horário de Início</label>
+                <input type="datetime-local" name="data_hora_inicio" class="form-control" step="1800" required>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar Horário</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Gerenciar Atendimento / Remarcar -->
+<div class="modal-overlay" id="modalGerenciar">
+    <div class="modal-wrapper" style="max-width: 500px;">
+        <h3 class="font-clinic-subtitle" style="margin-bottom: 8px;">Gerenciar Atendimento</h3>
+        <p id="gerenciar-cliente-nome" style="font-weight: 600; font-size: 1.2rem; color: var(--text-dark); margin-bottom: 4px;"></p>
+        <p id="gerenciar-servico-nome" style="color: var(--text-muted); margin-bottom: 24px;"></p>
+
+        <form id="formGerenciar">
+            <input type="hidden" name="agendamento_id" id="gerenciar-id">
+            
+            <div class="form-group">
+                <label>Atualizar Status do Cliente</label>
+                <select name="status" id="gerenciar-status" class="form-control" style="font-weight: bold;">
+                    <option value="Agendado">Agendado (Ainda não chegou)</option>
+                    <option value="Confirmado">Confirmado pelo WhatsApp</option>
+                    <option value="Presente">Presente (Aguardando na recepção)</option>
+                    <option value="Em Atendimento">Em Atendimento (Na sala)</option>
+                    <option value="Concluído">Concluído (Liberado para o Caixa)</option>
+                    <option value="Atrasado">Atrasado</option>
+                    <option value="Cancelado">Cancelado</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="grupo-pagamento" style="display: none; margin-top: 16px; padding: 16px; background-color: #f8fafc; border-radius: 8px; border: 1px dashed var(--color-smell-primary);">
+                <label style="color: var(--color-smell-primary);">Lançamento no Caixa (Forma de Pagamento)</label>
+                <select name="forma_pagamento" class="form-control">
+                    <option value="Pix">Pix</option>
+                    <option value="Cartão de Crédito">Cartão de Crédito</option>
+                    <option value="Cartão de Débito">Cartão de Débito</option>
+                    <option value="Dinheiro">Dinheiro</option>
+                </select>
+            </div>
+            
+            <hr style="margin: 24px 0; border-color: var(--border-color);">
+            
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <!-- NOVO: Botão de acionar a inteligência de remarcação -->
+                <button type="button" class="btn btn-secondary" onclick="iniciarRemarcacao()" style="background-color: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;">
+                    <i class="fa-regular fa-calendar-days" style="margin-right: 8px;"></i> Remarcar Data
+                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-secondary" onclick="fecharModalGerenciar()">Fechar</button>
+                    <button type="submit" class="btn btn-primary">Salvar Alteração</button>
+                </div>
+            </div>
+        </form>
+
+        <!-- NOVO: Bloco Oculto da Remarcação (Radar 90 Dias) -->
+        <div id="div-remarcacao" style="display: none; margin-top: 24px; padding: 16px; background-color: #f8fafc; border: 1px solid var(--color-smell-primary); border-radius: 8px;">
+            <h4 style="margin-top: 0; margin-bottom: 16px; color: var(--color-smell-primary);">
+                <i class="fa-solid fa-magnifying-glass"></i> Horários Livres (Próx. 90 dias)
+            </h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>Data Disponível</label>
+                    <select id="remarcar-data" class="form-control" onchange="carregarHorariosLivres(this.value)">
+                        <option value="">Carregando o radar...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Horário</label>
+                    <select id="remarcar-hora" class="form-control">
+                        <option value="">Selecione a data...</option>
+                    </select>
+                </div>
+            </div>
+            <button type="button" class="btn btn-primary" style="width: 100%; margin-top: 16px; background-color: var(--color-smell-primary);" onclick="confirmarRemarcacaoOficial()">
+                Confirmar Remarcação
+            </button>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // ==========================================
+    // RENDERIZADOR MATEMÁTICO DOS AGENDAMENTOS
+    // ==========================================
+    const agendamentos = {{ agendamentos | tojson | safe }};
+    const ALTURA_BLOCO_PX = 60; // 60 pixels equivale a 30 minutos (definido no CSS)
+    
+    agendamentos.forEach(ag => {
+        const timePart = ag.data_hora_inicio.split(' ')[1].substring(0, 5);
+        const profId = ag.profissional_id;
+        
+        let min = parseInt(timePart.split(':')[1]);
+        let hour = timePart.split(':')[0];
+        
+        // Arredonda para o bloco de 30 mais próximo para encontrar a célula âncora correta
+        let slotMin = min >= 30 ? "30" : "00";
+        let slotTime = `${hour}:${slotMin}`;
+        
+        const cell = document.querySelector(`.agenda-slot-cell[data-prof="${profId}"][data-time="${slotTime}"]`);
+        
+        if(cell) {
+            const blocos = ag.duracao_minutos / 30;
+            
+            let statusClass = "status-agendado";
+            if(ag.status === "Confirmado") statusClass = "status-confirmado";
+            else if(ag.status === "Presente") statusClass = "status-presente"; 
+            else if(ag.status === "Em Atendimento") statusClass = "status-atendimento";
+            else if(ag.status === "Concluído") statusClass = "status-concluido";
+            else if(ag.status === "Atrasado") statusClass = "status-atrasado";
+            
+            const card = document.createElement('div');
+            card.className = `appointment-card ${statusClass}`;
+            
+            card.style.position = 'absolute';
+            card.style.top = '0';
+            card.style.left = '4px';
+            card.style.width = 'calc(100% - 8px)';
+            card.style.height = `calc(${blocos * ALTURA_BLOCO_PX}px - 4px)`;
+            
+            const primeiroNome = ag.cliente_nome.split(' ')[0];
+            
+            card.innerHTML = `
+                <div style="font-weight: 700; margin-bottom: 2px; font-size: 0.8rem; line-height: 1.1;">
+                    <i class="fa-regular fa-clock" style="margin-right: 4px; opacity: 0.7;"></i>${timePart} - ${primeiroNome}
+                </div>
+                <div style="font-size: 0.75rem; line-height: 1.2; margin-bottom: 4px; flex-grow: 1;">
+                    ${ag.servico_nome}
+                </div>
+                <div style="font-size: 0.65rem; opacity: 0.9; margin-top: auto; font-weight: 800; text-transform: uppercase;">
+                    ${ag.status}
+                </div>
+            `;
+            
+            card.onclick = function() {
+                document.getElementById('gerenciar-id').value = ag.id;
+                document.getElementById('gerenciar-cliente-nome').innerText = ag.cliente_nome;
+                document.getElementById('gerenciar-servico-nome').innerText = ag.servico_nome + ' às ' + timePart;
+                document.getElementById('gerenciar-status').value = ag.status;
+                
+                document.getElementById('gerenciar-status').dispatchEvent(new Event('change'));
+
+                // NOVO: Prepara o terreno para remarcação salvando a duração
+                document.getElementById('div-remarcacao').setAttribute('data-duracao', ag.duracao_minutos);
+                document.getElementById('div-remarcacao').style.display = 'none';
+                
+                document.getElementById('modalGerenciar').classList.add('active');
+            };
+            
+            cell.appendChild(card);
+        }
+    });
+
+    // ==========================================
+    // LÓGICA DE INTERAÇÃO DO SISTEMA
+    // ==========================================
+    
+    document.getElementById('gerenciar-status').addEventListener('change', function() {
+        if(this.value === 'Concluído') {
+            document.getElementById('grupo-pagamento').style.display = 'block';
+        } else {
+            document.getElementById('grupo-pagamento').style.display = 'none';
+        }
+    });
+
+    function abrirModal() { document.getElementById('modalAgendamento').classList.add('active'); }
+    function fecharModal() { document.getElementById('modalAgendamento').classList.remove('active'); }
+
+    function fecharModalGerenciar() { 
+        document.getElementById('modalGerenciar').classList.remove('active'); 
+    }
+
+    document.getElementById('formNovoAgendamento').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        fetch("{{ url_for('main.novo_agendamento') }}", { method: 'POST', body: formData })
+        .then(response => response.json())
+        .then(data => {
+            if(data.erro) {
+                alert(data.mensagem);
+            } else {
+                alert(data.mensagem);
+                window.location.reload();
+            }
+        });
+    });
+
+    document.getElementById('formGerenciar').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        fetch("{{ url_for('main.atualizar_agendamento') }}", { method: 'POST', body: formData })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.mensagem);
+            window.location.reload();
+        });
+    });
+
+    // ==========================================
+    // LÓGICA DA VISÃO MENSAL E CALENDÁRIO
+    // ==========================================
+
+    let dataCalendario = new Date();
+
+    function mudarVisao(visao) {
+        if (visao === 'dia') {
+            document.getElementById('visao-diaria').style.display = 'block';
+            document.getElementById('visao-mensal').style.display = 'none';
+            document.getElementById('btnVisaoDia').className = 'btn btn-primary';
+            document.getElementById('btnVisaoMes').className = 'btn btn-secondary';
+        } else {
+            document.getElementById('visao-diaria').style.display = 'none';
+            document.getElementById('visao-mensal').style.display = 'block';
+            document.getElementById('btnVisaoDia').className = 'btn btn-secondary';
+            document.getElementById('btnVisaoMes').className = 'btn btn-primary';
+            renderizarCalendario();
+        }
+    }
+
+    function mudarMes(direcao) {
+        dataCalendario.setMonth(dataCalendario.getMonth() + direcao);
+        renderizarCalendario();
+    }
+
+    function renderizarCalendario() {
+        const ano = dataCalendario.getFullYear();
+        const mes = dataCalendario.getMonth();
+        
+        const nomesMeses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+        document.getElementById('mes-atual-label').innerText = `${nomesMeses[mes]} ${ano}`;
+
+        const primeiroDiaMes = new Date(ano, mes, 1).getDay();
+        const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+        
+        let gridHtml = `
+            <div class="calendario-header">Domingo</div><div class="calendario-header">Segunda</div><div class="calendario-header">Terça</div>
+            <div class="calendario-header">Quarta</div><div class="calendario-header">Quinta</div><div class="calendario-header">Sexta</div>
+            <div class="calendario-header">Sábado</div>
+        `;
+        
+        for (let i = 0; i < primeiroDiaMes; i++) {
+            gridHtml += `<div class="calendario-dia" style="background: transparent; border: none; cursor: default;"></div>`;
+        }
+        
+        const mesFormatado = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+        
+        fetch(`/api/agendamentos/mes?mes_ano=${mesFormatado}`)
+        .then(res => res.json())
+        .then(dados => {
+            const hoje = new Date();
+            const strHoje = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+            
+            for (let i = 1; i <= diasNoMes; i++) {
+                const diaFormatado = `${mesFormatado}-${String(i).padStart(2, '0')}`;
+                const totalAgendamentos = dados[diaFormatado] || 0;
+                
+                let classeHoje = (diaFormatado === strHoje) ? 'hoje' : '';
+                let badge = totalAgendamentos > 0 ? `<div class="badge-agendamento">${totalAgendamentos} agendamento(s)</div>` : '';
+                
+                gridHtml += `
+                    <div class="calendario-dia ${classeHoje}" onclick="selecionarDia('${diaFormatado}')" title="Ver clientes deste dia">
+                        <span style="font-weight: bold; font-size: 1.1rem; color: var(--text-dark);">${i}</span>
+                        ${badge}
+                    </div>
+                `;
+            }
+            document.getElementById('calendario-dias').innerHTML = gridHtml;
+        });
+    }
+
+    function selecionarDia(dataSelecionada) {
+        window.location.href = '/?data=' + dataSelecionada;
+    }
+
+    // =========================================================
+    // LÓGICA DO MOTOR DE REMARCAÇÃO (RADAR DE DISPONIBILIDADE)
+    // =========================================================
+    let cacheDiasLivres = {};
+
+    function iniciarRemarcacao() {
+        const duracao = document.getElementById('div-remarcacao').getAttribute('data-duracao') || 60;
+        document.getElementById('div-remarcacao').style.display = 'block';
+        
+        fetch(`/api/agendamentos/disponibilidade?duracao_minutos=${duracao}`)
+        .then(res => res.json())
+        .then(data => {
+            cacheDiasLivres = data.dias_disponiveis;
+            const slc = document.getElementById('remarcar-data');
+            slc.innerHTML = '<option value="">Selecione o Dia...</option>';
+            
+            for(let dia in cacheDiasLivres) {
+                const dataBR = dia.split('-').reverse().join('/');
+                slc.innerHTML += `<option value="${dia}">${dataBR}</option>`;
+            }
+        });
+    }
+
+    function carregarHorariosLivres(dataSelecionada) {
+        const slc = document.getElementById('remarcar-hora');
+        slc.innerHTML = '<option value="">Selecione o Horário...</option>';
+        if(cacheDiasLivres[dataSelecionada]) {
+            cacheDiasLivres[dataSelecionada].forEach(hora => {
+                slc.innerHTML += `<option value="${hora}">${hora}</option>`;
+            });
+        }
+    }
+
+    function confirmarRemarcacaoOficial() {
+        const data = document.getElementById('remarcar-data').value;
+        const hora = document.getElementById('remarcar-hora').value;
+        const ag_id = document.getElementById('gerenciar-id').value;
+
+        if(!data || !hora) { alert("Ops! Selecione uma data e horário válidos."); return; }
+
+        const formData = new FormData();
+        formData.append('agendamento_id', ag_id);
+        formData.append('nova_data_hora', `${data} ${hora}:00`);
+
+        fetch("{{ url_for('main.remarcar_agendamento') }}", { method: 'POST', body: formData })
+        .then(r => r.json()).then(resp => { alert(resp.mensagem); if(!resp.erro) window.location.reload(); });
+    }
+</script>
+{% endblock %}

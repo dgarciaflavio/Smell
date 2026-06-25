@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Catálogo e Combos - Smell CLINIC | SPA{% endblock %}
+
+{% block content %}
+<div class="page-header" style="margin-bottom: 24px;">
+    <div>
+        <h2 class="font-clinic-subtitle" style="font-weight: 600; font-size: 1.5rem;">Catálogo e Negócios</h2>
+        <span style="color: var(--text-muted); font-size: 0.9rem;">Gerencie serviços e crie pacotes estratégicos</span>
+    </div>
+</div>
+
+<div style="display: flex; gap: 16px; margin-bottom: 24px;">
+    <button id="btnAbaServicos" class="btn btn-primary" onclick="trocarAba('servicos')">Procedimentos Avulsos</button>
+    <button id="btnAbaCombos" class="btn btn-secondary" onclick="trocarAba('combos')">Pacotes e Combos VIP</button>
+</div>
+
+<div id="aba-servicos">
+    <div style="display: flex; justify-content: flex-end; margin-bottom: 16px;">
+        <button class="btn btn-primary" onclick="abrirModalNovoServico()"><i class="fa-solid fa-plus" style="margin-right: 8px;"></i> Novo Serviço</button>
+    </div>
+    <div class="agenda-container" style="padding: 24px;">
+        <table style="width: 100%; text-align: left; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 2px solid var(--border-color);">
+                    <th style="padding: 12px 8px;">Nome do Procedimento</th>
+                    <th style="padding: 12px 8px;">Duração</th>
+                    <th style="padding: 12px 8px;">Valor Base (R$)</th>
+                    <th style="padding: 12px 8px; text-align: right;">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if servicos %}
+                    {% for s in servicos %}
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 12px 8px; font-weight: 500;">{{ s.nome }}</td>
+                        <td style="padding: 12px 8px;"><i class="fa-regular fa-clock"></i> {{ s.duracao_minutos }} min</td>
+                        <td style="padding: 12px 8px; color: var(--color-smell-primary); font-weight: 600;">R$ {{ "%.2f"|format(s.preco_padrao) }}</td>
+                        <td style="padding: 12px 8px; text-align: right;">
+                            <button class="btn btn-secondary" style="padding: 6px 12px;" onclick="abrirModalEditarServico('{{ s.id }}', '{{ s.nome }}', '{{ s.duracao_minutos }}', '{{ s.preco_padrao }}')"><i class="fa-solid fa-pen"></i></button>
+                            <button class="btn btn-secondary" style="padding: 6px 12px; color: #ef4444;" onclick="abrirModalExcluirServico('{{ s.id }}', '{{ s.nome }}')"><i class="fa-solid fa-trash"></i></button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td colspan="4" style="text-align: center; padding: 40px; color: var(--text-muted);">Nenhum serviço cadastrado.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="aba-combos" style="display: none;">
+    <div style="display: flex; justify-content: flex-end; margin-bottom: 16px;">
+        <button class="btn btn-primary" onclick="abrirModalNovoCombo()"><i class="fa-solid fa-plus" style="margin-right: 8px;"></i> Criar Pacote</button>
+    </div>
+    <div class="agenda-container" style="padding: 24px;">
+        <table style="width: 100%; text-align: left; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 2px solid var(--border-color);">
+                    <th style="padding: 12px 8px;">Nome do Pacote/Combo</th>
+                    <th style="padding: 12px 8px;">Tipo</th>
+                    <th style="padding: 12px 8px;">Preço Total (R$)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if pacotes %}
+                    {% for p in pacotes %}
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 12px 8px; font-weight: 600;">{{ p.nome }}</td>
+                        <td style="padding: 12px 8px;"><span style="background-color: #dbeafe; color: #1e3a8a; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem;">{{ p.tipo }}</span></td>
+                        <td style="padding: 12px 8px; color: var(--color-smell-primary); font-weight: bold;">R$ {{ "%.2f"|format(p.preco_total) }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td colspan="3" style="text-align: center; padding: 40px; color: var(--text-muted);">Nenhum pacote cadastrado. Crie um novo combo para impulsionar suas vendas!</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal-overlay" id="modalNovoServico">
+    <div class="modal-wrapper">
+        <h3 class="font-clinic-subtitle" style="margin-bottom: 24px;">Cadastrar Serviço</h3>
+        <form id="formNovoServico">
+            <div class="form-group"><label>Nome do Procedimento</label><input type="text" name="nome" class="form-control" required></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>Duração (Minutos)</label><input type="number" name="duracao_minutos" class="form-control" required></div>
+                <div class="form-group"><label>Valor Padrão (R$)</label><input type="number" step="0.01" name="preco_padrao" class="form-control" required></div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalNovoServico').classList.remove('active')">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar Serviço</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="modalEditarServico">
+    <div class="modal-wrapper">
+        <h3 class="font-clinic-subtitle" style="margin-bottom: 24px;">Editar Serviço</h3>
+        <form id="formEditarServico">
+            <input type="hidden" name="id" id="edit-id">
+            <div class="form-group"><label>Nome</label><input type="text" name="nome" id="edit-nome" class="form-control" required></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label>Duração (Minutos)</label><input type="number" name="duracao_minutos" id="edit-duracao" class="form-control" required></div>
+                <div class="form-group"><label>Valor (R$)</label><input type="number" step="0.01" name="preco_padrao" id="edit-preco" class="form-control" required></div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalEditarServico').classList.remove('active')">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="modalNovoCombo">
+    <div class="modal-wrapper" style="max-width: 600px;">
+        <h3 class="font-clinic-subtitle" style="margin-bottom: 24px;">Criar Pacote Estratégico</h3>
+        <form id="formNovoCombo">
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>Nome Comercial</label>
+                    <input type="text" name="nome" class="form-control" placeholder="Ex: Combo Verão VIP" required>
+                </div>
+                <div class="form-group">
+                    <label>Classificação</label>
+                    <select name="tipo" class="form-control">
+                        <option value="Pacote">Pacote (Mesmo Serv.)</option>
+                        <option value="Combo">Combo (Mix)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Preço Total da Venda (R$)</label>
+                <input type="number" step="0.01" name="preco_total" class="form-control" placeholder="Ex: 500.00" required>
+            </div>
+            
+            <hr style="margin: 24px 0; border-color: var(--border-color);">
+            <h4 style="margin-bottom: 16px; color: var(--color-smell-primary);">Adicionar Sessões a este Pacote</h4>
+            
+            <div id="area-itens-combo">
+                <div class="combo-linha" style="display: flex; gap: 8px; margin-bottom: 8px;">
+                    <select name="servico_id[]" class="form-control" style="flex: 2;">
+                        <option value="">Selecione um serviço base...</option>
+                        {% for s in servicos %}<option value="{{ s.id }}">{{ s.nome }}</option>{% endfor %}
+                    </select>
+                    <input type="text" name="nome_vip[]" class="form-control" style="flex: 2;" placeholder="Ou digite o nome VIP avulso">
+                    <input type="number" name="duracao_vip[]" class="form-control" style="flex: 1;" placeholder="Minutos (VIP)">
+                    <input type="number" name="quantidade[]" class="form-control" style="flex: 1;" placeholder="Qtd" value="1" required>
+                </div>
+            </div>
+            <button type="button" class="btn btn-secondary" style="margin-top: 8px; font-size: 0.85rem;" onclick="adicionarLinhaCombo()">+ Adicionar mais um item à lista</button>
+
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;">
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalNovoCombo').classList.remove('active')">Cancelar</button>
+                <button type="submit" class="btn btn-primary" style="background-color: var(--color-smell-primary);">Gerar Pacote</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function trocarAba(aba) {
+        if(aba === 'servicos') {
+            document.getElementById('aba-servicos').style.display = 'block';
+            document.getElementById('aba-combos').style.display = 'none';
+            document.getElementById('btnAbaServicos').className = 'btn btn-primary';
+            document.getElementById('btnAbaCombos').className = 'btn btn-secondary';
+        } else {
+            document.getElementById('aba-servicos').style.display = 'none';
+            document.getElementById('aba-combos').style.display = 'block';
+            document.getElementById('btnAbaServicos').className = 'btn btn-secondary';
+            document.getElementById('btnAbaCombos').className = 'btn btn-primary';
+        }
+    }
+
+    // Modal Controle - Serviços Avulsos
+    function abrirModalNovoServico() { document.getElementById('modalNovoServico').classList.add('active'); }
+    function abrirModalEditarServico(id, nome, duracao, preco) {
+        document.getElementById('edit-id').value = id; document.getElementById('edit-nome').value = nome;
+        document.getElementById('edit-duracao').value = duracao; document.getElementById('edit-preco').value = preco;
+        document.getElementById('modalEditarServico').classList.add('active');
+    }
+
+    // Modal Controle - Combos
+    function abrirModalNovoCombo() { document.getElementById('modalNovoCombo').classList.add('active'); }
+    
+    function adicionarLinhaCombo() {
+        const linhaBase = document.querySelector('.combo-linha').cloneNode(true);
+        linhaBase.querySelectorAll('input').forEach(input => { if(input.name !== 'quantidade[]') input.value = ''; else input.value = '1'; });
+        linhaBase.querySelector('select').value = '';
+        document.getElementById('area-itens-combo').appendChild(linhaBase);
+    }
+
+    // Submissão API
+    document.getElementById('formNovoServico').addEventListener('submit', function(e) {
+        e.preventDefault();
+        fetch("{{ url_for('main.novo_servico') }}", { method: 'POST', body: new FormData(this) })
+        .then(res => res.json()).then(data => { alert(data.mensagem); window.location.reload(); });
+    });
+
+    document.getElementById('formEditarServico').addEventListener('submit', function(e) {
+        e.preventDefault();
+        fetch("{{ url_for('main.editar_servico') }}", { method: 'POST', body: new FormData(this) })
+        .then(res => res.json()).then(data => { alert(data.mensagem); window.location.reload(); });
+    });
+
+    document.getElementById('formNovoCombo').addEventListener('submit', function(e) {
+        e.preventDefault();
+        fetch("{{ url_for('main.novo_pacote_combo') }}", { method: 'POST', body: new FormData(this) })
+        .then(res => res.json()).then(data => { alert(data.mensagem); window.location.reload(); });
+    });
+</script>
+{% endblock %}
