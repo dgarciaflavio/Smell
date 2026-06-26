@@ -176,7 +176,20 @@ def agenda():
     config = conn.execute("SELECT * FROM configuracoes_clinica LIMIT 1").fetchone()
     abertura = config['hora_abertura'] if config else 8
     fechamento = config['hora_fechamento'] if config else 20
-    agendamentos = conn.execute("SELECT a.*, c.nome as cliente_nome, s.nome as servico_nome, s.duracao_minutos FROM agendamentos a JOIN clientes c ON a.cliente_id = c.id JOIN servicos s ON a.servico_id = s.id WHERE a.data_hora_inicio LIKE ? AND a.status != 'Cancelado'", (f"{data_busca}%",)).fetchall()
+    
+    try:
+        agendamentos = conn.execute("""
+            SELECT a.*, c.nome as cliente_nome, 
+            COALESCE(s.nome, 'Procedimento/Pacote') as servico_nome, 
+            COALESCE(s.duracao_minutos, 60) as duracao_minutos
+            FROM agendamentos a 
+            JOIN clientes c ON a.cliente_id = c.id 
+            LEFT JOIN servicos s ON a.servico_id = s.id 
+            WHERE a.data_hora_inicio LIKE ? AND a.status != 'Cancelado'
+        """, (f"{data_busca}%",)).fetchall()
+    except sqlite3.OperationalError:
+        agendamentos = conn.execute("SELECT a.*, c.nome as cliente_nome, s.nome as servico_nome, s.duracao_minutos FROM agendamentos a JOIN clientes c ON a.cliente_id = c.id LEFT JOIN servicos s ON a.servico_id = s.id WHERE a.data_hora_inicio LIKE ? AND a.status != 'Cancelado'", (f"{data_busca}%",)).fetchall()
+
     agendamentos_json = [dict(row) for row in agendamentos]
     conn.close()
     return render_template('agenda.html', profissionais=profissionais, servicos=servicos_lista, data_hoje=data_busca, abertura=abertura, fechamento=fechamento, agendamentos=agendamentos_json)
@@ -601,27 +614,77 @@ def novo_agendamento():
     cliente_input = request.form.get('cliente_nome_cpf', '').strip()
     profissional_id = request.form.get('profissional_id')
     servico_id = request.form.get('servico_id')
-    data_hora_inicio = request.form.get('data_hora_inicio') 
-    if 'T' in data_hora_inicio: data_hora_inicio = data_hora_inicio.replace('T', ' ') + ':00'
+    
+    # Suporte para receber múltiplas datas (caso combo ou pacote em dias separados)
+    datas_horas = request.form.getlist('data_hora_inicio[]')
+    
+    # Fallback caso o sistema envie no padrão anterior
+    if not datas_horas:
+        dt_unica = request.form.get('data_hora_inicio')
+        if dt_unica:
+            datas_horas = [dt_unica]
+            
+    if not datas_horas:
+        return jsonify({"mensagem": "Nenhuma data de agendamento informada.", "erro": True})
+
     conn = get_db_connection()
     cliente = conn.execute("SELECT * FROM clientes WHERE cpf = ? OR nome LIKE ?", (cliente_input, f"%{cliente_input}%")).fetchone()
+    
     if not cliente:
         conn.close()
         return jsonify({"mensagem": "Cliente não localizado. Cadastre o cliente primeiro!", "erro": True})
-    servico = conn.execute("SELECT * FROM servicos WHERE id = ?", (servico_id,)).fetchone()
-    inicio_dt = datetime.datetime.strptime(data_hora_inicio, "%Y-%m-%d %H:%M:%S")
-    fim_dt = inicio_dt + datetime.timedelta(minutes=servico['duracao_minutos'])
-    data_hora_fim = fim_dt.strftime("%Y-%m-%d %H:%M:%S")
-    conflito = conn.execute("SELECT c.nome as cliente_nome, s.nome as servico_nome FROM agendamentos a JOIN clientes c ON a.cliente_id = c.id JOIN servicos s ON a.servico_id = s.id WHERE a.status NOT IN ('Cancelado') AND a.data_hora_inicio < ? AND a.data_hora_fim_previsto > ?", (data_hora_fim, data_hora_inicio)).fetchone()
-    if conflito:
-        conn.close()
-        return jsonify({"mensagem": f"⚠️ CONFLITO DE HORÁRIO!\nJá existe um agendamento de '{conflito['servico_nome']}' para o(a) cliente '{conflito['cliente_nome']}' neste período da sala. Verifique a disponibilidade.", "erro": True})
-    conn.execute("INSERT INTO agendamentos (cliente_id, profissional_id, servico_id, data_hora_inicio, data_hora_fim_previsto, status) VALUES (?, ?, ?, ?, ?, 'Agendado')", (cliente['id'], profissional_id, servico_id, data_hora_inicio, data_hora_fim))
-    msg_agenda = f"Olá, {cliente['nome']}! Seu agendamento de {servico['nome']} foi confirmado para o dia {inicio_dt.strftime('%d/%m/%Y')} às {inicio_dt.strftime('%H:%M')} na Smell CLINIC | SPA."
-    conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem) VALUES (?, ?)", (cliente['telefone'], msg_agenda))
+        
+    servico = None
+    duracao_minutos = 60 # Duração de segurança
+    nome_procedimento = "Procedimento ou Sessão"
+    
+    if servico_id:
+        servico = conn.execute("SELECT * FROM servicos WHERE id = ?", (servico_id,)).fetchone()
+        if servico:
+            duracao_minutos = servico['duracao_minutos']
+            nome_procedimento = servico['nome']
+
+    # 1. Varredura de conflitos (para garantir que TODAS as datas estão livres antes de marcar 1 sequer)
+    for dt_str in datas_horas:
+        if 'T' in dt_str: dt_str = dt_str.replace('T', ' ') + ':00'
+        
+        inicio_dt = datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+        fim_dt = inicio_dt + datetime.timedelta(minutes=duracao_minutos)
+        data_hora_fim = fim_dt.strftime("%Y-%m-%d %H:%M:%S")
+        
+        conflito = conn.execute("""
+            SELECT c.nome as cliente_nome, COALESCE(s.nome, 'Procedimento') as servico_nome 
+            FROM agendamentos a 
+            LEFT JOIN clientes c ON a.cliente_id = c.id 
+            LEFT JOIN servicos s ON a.servico_id = s.id 
+            WHERE a.status NOT IN ('Cancelado') AND a.data_hora_inicio < ? AND a.data_hora_fim_previsto > ?
+        """, (data_hora_fim, dt_str)).fetchone()
+        
+        if conflito:
+            conn.close()
+            return jsonify({"mensagem": f"⚠️ CONFLITO DE HORÁRIO!\nJá existe um agendamento para '{conflito['cliente_nome']}' na sala no dia e hora: {dt_str}.", "erro": True})
+
+    # 2. Insere todos os agendamentos no banco
+    for dt_str in datas_horas:
+        if 'T' in dt_str: dt_str = dt_str.replace('T', ' ') + ':00'
+        
+        inicio_dt = datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+        fim_dt = inicio_dt + datetime.timedelta(minutes=duracao_minutos)
+        data_hora_fim = fim_dt.strftime("%Y-%m-%d %H:%M:%S")
+        
+        conn.execute("""
+            INSERT INTO agendamentos (cliente_id, profissional_id, servico_id, data_hora_inicio, data_hora_fim_previsto, status) 
+            VALUES (?, ?, ?, ?, ?, 'Agendado')
+        """, (cliente['id'], profissional_id, servico_id, dt_str, data_hora_fim))
+        
+        msg_agenda = f"Olá, {cliente['nome']}! Seu agendamento de {nome_procedimento} foi confirmado para o dia {inicio_dt.strftime('%d/%m/%Y')} às {inicio_dt.strftime('%H:%M')} na Smell CLINIC | SPA."
+        conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem) VALUES (?, ?)", (cliente['telefone'], msg_agenda))
+        
     conn.commit()
     conn.close()
-    return jsonify({"mensagem": "Horário salvo com sucesso! O lembrete já foi enviado ao WhatsApp do cliente.", "erro": False})
+    
+    texto_sucesso = "Horário salvo com sucesso!" if len(datas_horas) == 1 else f"{len(datas_horas)} horários salvos com sucesso (Combo/Pacote)!"
+    return jsonify({"mensagem": f"{texto_sucesso} O lembrete já foi enviado ao WhatsApp do cliente.", "erro": False})
 
 @main_bp.route('/agendamento/atualizar', methods=['POST'])
 def atualizar_agendamento():
@@ -640,6 +703,134 @@ def atualizar_agendamento():
     conn.commit()
     conn.close()
     return jsonify({"mensagem": f"Status atualizado para '{novo_status}'. \n(Se concluído, o caixa foi atualizado!)"})
+
+@main_bp.route('/agendamento/remarcar', methods=['POST'])
+def remarcar_agendamento():
+    ag_id = request.form.get('agendamento_id')
+    nova_data = request.form.get('nova_data')
+    novo_horario = request.form.get('novo_horario')
+    
+    if not ag_id or not nova_data or not novo_horario:
+        return jsonify({"mensagem": "Dados incompletos para remarcação.", "erro": True})
+    
+    nova_data_hora = f"{nova_data} {novo_horario}:00"
+    
+    conn = get_db_connection()
+    agendamento = conn.execute("SELECT * FROM agendamentos WHERE id = ?", (ag_id,)).fetchone()
+    if not agendamento:
+        conn.close()
+        return jsonify({"mensagem": "Agendamento não encontrado no sistema.", "erro": True})
+        
+    cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (agendamento['cliente_id'],)).fetchone()
+    
+    if agendamento['servico_id']:
+        servico = conn.execute("SELECT duracao_minutos, nome FROM servicos WHERE id = ?", (agendamento['servico_id'],)).fetchone()
+        duracao = servico['duracao_minutos']
+        nome_proc = servico['nome']
+    else:
+        # Fallback de cálculo caso seja um procedimento livre VIP/Combo sem ID de serviço vinculado diretamente
+        inicio_original = datetime.datetime.strptime(agendamento['data_hora_inicio'], "%Y-%m-%d %H:%M:%S")
+        fim_original = datetime.datetime.strptime(agendamento['data_hora_fim_previsto'], "%Y-%m-%d %H:%M:%S")
+        duracao = int((fim_original - inicio_original).total_seconds() / 60)
+        nome_proc = 'Procedimento'
+
+    fim_dt = datetime.datetime.strptime(nova_data_hora, "%Y-%m-%d %H:%M:%S") + datetime.timedelta(minutes=duracao)
+    nova_data_hora_fim = fim_dt.strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Verifica conflito na remarcação
+    conflito = conn.execute("""
+        SELECT c.nome as cliente_nome, COALESCE(s.nome, 'Procedimento') as servico_nome 
+        FROM agendamentos a 
+        LEFT JOIN clientes c ON a.cliente_id = c.id 
+        LEFT JOIN servicos s ON a.servico_id = s.id 
+        WHERE a.status NOT IN ('Cancelado') AND a.id != ? 
+        AND a.data_hora_inicio < ? AND a.data_hora_fim_previsto > ?
+    """, (ag_id, nova_data_hora_fim, nova_data_hora)).fetchone()
+    
+    if conflito:
+        conn.close()
+        return jsonify({"mensagem": f"⚠️ CONFLITO DE HORÁRIO!\nJá existe um agendamento para '{conflito['cliente_nome']}' neste período da sala.", "erro": True})
+        
+    conn.execute("UPDATE agendamentos SET data_hora_inicio = ?, data_hora_fim_previsto = ?, status = 'Agendado' WHERE id = ?", (nova_data_hora, nova_data_hora_fim, ag_id))
+    
+    nova_dt_obj = datetime.datetime.strptime(nova_data_hora, '%Y-%m-%d %H:%M:%S')
+    msg = f"Olá, {cliente['nome']}! Seu agendamento de {nome_proc} foi REMARCADO com sucesso para o dia {nova_dt_obj.strftime('%d/%m/%Y')} às {nova_dt_obj.strftime('%H:%M')} na Smell CLINIC | SPA."
+    conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem) VALUES (?, ?)", (cliente['telefone'], msg))
+    
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"mensagem": "Agendamento remarcado com sucesso! Lembrete enviado ao WhatsApp.", "erro": False})
+
+@main_bp.route('/combo/novo', methods=['POST'])
+def novo_combo():
+    nome_combo = request.form.get('nome_combo')
+    servicos = request.form.getlist('combo_servicos') # array com IDs
+    observacoes = request.form.get('observacoes', '')
+    valor_base = request.form.get('valor_base', '0').replace('R$ ', '')
+    porcentagem_desconto = request.form.get('porcentagem_desconto', '0')
+    valor_final = request.form.get('valor_final', '0').replace('R$ ', '')
+
+    try:
+        conn = get_db_connection()
+        # Garante a tabela caso o schema original do sqlite do usuário ainda não tenha.
+        conn.execute('''CREATE TABLE IF NOT EXISTS pacotes_combos (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            nome TEXT,
+                            tipo TEXT,
+                            servicos_ids TEXT,
+                            observacoes TEXT,
+                            valor_base REAL,
+                            porcentagem_desconto REAL,
+                            valor_final REAL,
+                            ativo INTEGER DEFAULT 1
+                        )''')
+        
+        conn.execute("""
+            INSERT INTO pacotes_combos 
+            (nome, tipo, servicos_ids, observacoes, valor_base, porcentagem_desconto, valor_final) 
+            VALUES (?, 'Combo', ?, ?, ?, ?, ?)
+        """, (nome_combo, ",".join(servicos), observacoes, float(valor_base), float(porcentagem_desconto), float(valor_final)))
+        
+        conn.commit()
+        conn.close()
+        return jsonify({"mensagem": "Combo cadastrado com sucesso! Ele já pode ser agendado.", "erro": False})
+    except Exception as e:
+        return jsonify({"mensagem": f"Erro interno ao salvar combo: {str(e)}", "erro": True})
+
+@main_bp.route('/pacote/novo', methods=['POST'])
+def novo_pacote():
+    nome_pacote = request.form.get('nome_pacote')
+    servico_id = request.form.get('servico_id')
+    quantidade_sessoes = request.form.get('quantidade_sessoes')
+    valor_base = request.form.get('valor_base', '0').replace('R$ ', '')
+
+    try:
+        conn = get_db_connection()
+        conn.execute('''CREATE TABLE IF NOT EXISTS pacotes_combos (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            nome TEXT,
+                            tipo TEXT,
+                            servicos_ids TEXT,
+                            observacoes TEXT,
+                            valor_base REAL,
+                            porcentagem_desconto REAL,
+                            valor_final REAL,
+                            ativo INTEGER DEFAULT 1
+                        )''')
+        
+        conn.execute("""
+            INSERT INTO pacotes_combos 
+            (nome, tipo, servicos_ids, observacoes, valor_base, porcentagem_desconto, valor_final) 
+            VALUES (?, 'Pacote', ?, ?, ?, 0, ?)
+        """, (nome_pacote, servico_id, f"{quantidade_sessoes} sessões", float(valor_base), float(valor_base)))
+        
+        conn.commit()
+        conn.close()
+        return jsonify({"mensagem": "Pacote Estratégico cadastrado com sucesso! Disponível para agendamentos.", "erro": False})
+    except Exception as e:
+        return jsonify({"mensagem": f"Erro interno ao salvar pacote: {str(e)}", "erro": True})
+
 
 @main_bp.route('/profissional/novo', methods=['POST'])
 def novo_profissional():
