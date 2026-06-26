@@ -16,6 +16,7 @@ import pandas as pd
 import io
 import subprocess
 import secrets
+import socket
 
 main_bp = Blueprint('main', __name__)
 
@@ -27,6 +28,19 @@ status_backup_global = {"em_andamento": False, "mensagem": "", "progresso": 0}
 
 # Controle de rotinas em background para não duplicar no Flask
 BACKGROUND_TASKS_STARTED = False
+
+def obter_ip_local():
+    """Obtém o IP real da máquina na rede local para gerar links externos"""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # Não precisa acessar a internet, apenas invoca a tabela de roteamento local
+        s.connect(('10.255.255.255', 1))
+        IP = s.getsockname()[0]
+    except Exception:
+        IP = '127.0.0.1'
+    finally:
+        s.close()
+    return IP
 
 def get_db_absoluto(root_path):
     """Conexão direta para ser usada pelas threads em background (evita erros de contexto do Flask)"""
@@ -128,7 +142,7 @@ def processar_notificacoes_inteligentes(root_path):
             
             # Se for 0, significa que foi o último ou único atendimento
             if futuros['total'] == 0:
-                msg_aval = f"Olá, {ag['nome']}! Agradecemos por escolher a Smell CLINIC | SPA. Sua opinião é muito importante para nós! Poderia avaliar nosso atendimento e deixar um comentário? É rapidinho: {link_avaliacao}"
+                msg_aval = f"Olá, {ag['nome']}! Agradecemos por escolher a Smell CLINIC | SPA. Sua opinião é muito importante para nós! Poderia avaliar nosso atendimento e deixar um comentário? É rapidinho:\n{link_avaliacao}"
                 conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (ag['telefone'], msg_aval))
                 
             # De qualquer forma, marca a flag como enviada para não processar este ID amanhã novamente
@@ -571,7 +585,22 @@ def avaliar_anamnese_pes(cliente_id, anamnese_id):
 
 @main_bp.route('/totem/cliente/<int:cliente_id>/facial', endpoint='totem_facial')
 def totem_facial(cliente_id):
+    token = request.args.get('token')
     conn = get_db_connection()
+    
+    if token:
+        agora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        registro_token = conn.execute("SELECT * FROM anamneses_termos WHERE token_temporario = ? AND data_expiracao_token > ? AND data_expiracao_token != 'UTILIZADO'", (token, agora)).fetchone()
+        if not registro_token:
+            conn.close()
+            return render_template_string("""
+                <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Link Expirado</title></head>
+                <body style="font-family: sans-serif; text-align: center; padding: 40px; background: #f8d7da; color: #721c24;">
+                    <h2>⚠️ Link Expirado ou Inválido</h2>
+                    <p>Este link de acesso expirou por segurança ou já foi utilizado. Por favor, solicite um novo na recepção.</p>
+                </body></html>
+            """)
+
     cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
     profissionais = conn.execute("SELECT * FROM profissionais WHERE status = 'Ativo'").fetchall()
     conn.close()
@@ -581,7 +610,22 @@ def totem_facial(cliente_id):
 
 @main_bp.route('/totem/cliente/<int:cliente_id>/corporal', endpoint='totem_corporal')
 def totem_corporal(cliente_id):
+    token = request.args.get('token')
     conn = get_db_connection()
+    
+    if token:
+        agora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        registro_token = conn.execute("SELECT * FROM anamneses_termos WHERE token_temporario = ? AND data_expiracao_token > ? AND data_expiracao_token != 'UTILIZADO'", (token, agora)).fetchone()
+        if not registro_token:
+            conn.close()
+            return render_template_string("""
+                <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Link Expirado</title></head>
+                <body style="font-family: sans-serif; text-align: center; padding: 40px; background: #f8d7da; color: #721c24;">
+                    <h2>⚠️ Link Expirado ou Inválido</h2>
+                    <p>Este link de acesso expirou por segurança ou já foi utilizado. Por favor, solicite um novo na recepção.</p>
+                </body></html>
+            """)
+
     cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
     profissionais = conn.execute("SELECT * FROM profissionais WHERE status = 'Ativo'").fetchall()
     conn.close()
@@ -591,7 +635,22 @@ def totem_corporal(cliente_id):
 
 @main_bp.route('/totem/cliente/<int:cliente_id>/pes', endpoint='totem_pes')
 def totem_pes(cliente_id):
+    token = request.args.get('token')
     conn = get_db_connection()
+    
+    if token:
+        agora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        registro_token = conn.execute("SELECT * FROM anamneses_termos WHERE token_temporario = ? AND data_expiracao_token > ? AND data_expiracao_token != 'UTILIZADO'", (token, agora)).fetchone()
+        if not registro_token:
+            conn.close()
+            return render_template_string("""
+                <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Link Expirado</title></head>
+                <body style="font-family: sans-serif; text-align: center; padding: 40px; background: #f8d7da; color: #721c24;">
+                    <h2>⚠️ Link Expirado ou Inválido</h2>
+                    <p>Este link de acesso expirou por segurança ou já foi utilizado. Por favor, solicite um novo na recepção.</p>
+                </body></html>
+            """)
+
     cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
     profissionais = conn.execute("SELECT * FROM profissionais WHERE status = 'Ativo'").fetchall()
     conn.close()
@@ -611,7 +670,7 @@ def acesso_remoto(token):
     conn = get_db_connection()
     agora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
-        registro = conn.execute("SELECT * FROM anamneses_termos WHERE token_temporario = ? AND data_expiracao_token > ?", (token, agora)).fetchone()
+        registro = conn.execute("SELECT * FROM anamneses_termos WHERE token_temporario = ? AND data_expiracao_token > ? AND data_expiracao_token != 'UTILIZADO'", (token, agora)).fetchone()
     except sqlite3.OperationalError:
         registro = None
 
@@ -667,6 +726,19 @@ def salvar_anamnese():
     
     conn = get_db_connection()
     
+    # Valida no banco se o token já foi utilizado antes de inserir (TRAVA CONTRA BOTÃO VOLTAR)
+    if token:
+        agora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            registro_token = conn.execute("SELECT * FROM anamneses_termos WHERE token_temporario = ? AND data_expiracao_token > ?", (token, agora)).fetchone()
+            if not registro_token:
+                conn.close()
+                return jsonify({"mensagem": "ERRO: O link utilizado expirou ou a ficha já foi enviada ao servidor.", "erro": True})
+                
+            # Destrói imediatamente o token mudando a data para o ano 2000
+            conn.execute("UPDATE anamneses_termos SET data_expiracao_token = '2000-01-01 00:00:00' WHERE token_temporario = ?", (token,))
+        except sqlite3.OperationalError: pass
+    
     # Garante que as novas colunas existam no banco sem precisar apagar a tabela antiga
     try:
         conn.execute("ALTER TABLE anamneses ADD COLUMN assinatura_profissional_base64 TEXT")
@@ -700,12 +772,6 @@ def salvar_anamnese():
             INSERT INTO anamneses (cliente_id, profissional_nome, tipo, dados_json, termo_assinado, assinatura_base64, assinatura_profissional_base64, assinatura_testemunha_base64) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, profissional_nome, tipo, dados_json, termo_assinado, assinatura_cliente, assinatura_profissional, assinatura_testemunha))
-    
-    # Se o cliente usou o link remoto, destrói o token imediatamente para segurança
-    if token:
-        try:
-            conn.execute("UPDATE anamneses_termos SET data_expiracao_token = 'UTILIZADO' WHERE token_temporario = ?", (token,))
-        except sqlite3.OperationalError: pass
         
     conn.commit()
     conn.close()
@@ -882,8 +948,20 @@ def novo_agendamento():
             VALUES (?, ?, ?, ?, ?, 'Agendado')
         """, (cliente['id'], profissional_id, servico_id, dt_str, data_hora_fim))
         
-        msg_agenda = f"Olá, {cliente['nome']}! Seu agendamento de {nome_procedimento} foi confirmado para o dia {inicio_dt.strftime('%d/%m/%Y')} às {inicio_dt.strftime('%H:%M')} na Smell CLINIC | SPA."
-        conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem) VALUES (?, ?)", (cliente['telefone'], msg_agenda))
+        # Gera o Token de Anamnese Remoto logo no momento de agendar
+        token = secrets.token_urlsafe(16)
+        expiracao = (datetime.datetime.now() + datetime.timedelta(minutes=60)).strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            conn.execute("INSERT INTO anamneses_termos (cliente_id, token_temporario, data_expiracao_token, origem_preenchimento) VALUES (?, ?, ?, 'Link Remoto')", (cliente['id'], token, expiracao))
+        except sqlite3.OperationalError:
+            conn.execute('''CREATE TABLE IF NOT EXISTS anamneses_termos (id INTEGER PRIMARY KEY AUTOINCREMENT, cliente_id INTEGER, token_temporario TEXT, data_expiracao_token TEXT, origem_preenchimento TEXT)''')
+            conn.execute("INSERT INTO anamneses_termos (cliente_id, token_temporario, data_expiracao_token, origem_preenchimento) VALUES (?, ?, ?, 'Link Remoto')", (cliente['id'], token, expiracao))
+
+        link_remoto = f"http://{obter_ip_local()}:5000/remoto/token/{token}"
+        msg_agenda = f"Olá, {cliente['nome']}! Seu agendamento de {nome_procedimento} foi confirmado para o dia {inicio_dt.strftime('%d/%m/%Y')} às {inicio_dt.strftime('%H:%M')} na Smell CLINIC | SPA.\n\nPara adiantar seu atendimento, por favor, preencha sua ficha de anamnese clicando neste link (válido por 60 min):\n{link_remoto}"
+        
+        # INSERÇÃO RIGOROSA COM STATUS 'Pendente' PARA O BOT IDENTIFICAR
+        conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (cliente['telefone'], msg_agenda))
         
     conn.commit()
     conn.close()
@@ -908,7 +986,7 @@ def atualizar_agendamento():
                 conn.execute("INSERT INTO fluxo_caixa (agendamento_id, tipo, valor, forma_pagamento, observacoes) VALUES (?, 'Entrada', ?, ?, ?)", (ag_id, agendamento['preco_padrao'], pagamento_final, f"Pagamento - Serviço: {agendamento['nome']}"))
 
     # LÓGICA DO TÚNEL DE ACESSO REMOTO PARA O CLIENTE
-    if enviar_link:
+    if enviar_link or novo_status == 'Aguardando':
         ag = conn.execute("SELECT a.*, c.nome as cliente_nome, c.telefone FROM agendamentos a JOIN clientes c ON a.cliente_id = c.id WHERE a.id = ?", (ag_id,)).fetchone()
         if ag:
             token = secrets.token_urlsafe(16)
@@ -916,12 +994,11 @@ def atualizar_agendamento():
             try:
                 conn.execute("INSERT INTO anamneses_termos (cliente_id, token_temporario, data_expiracao_token, origem_preenchimento) VALUES (?, ?, ?, 'Link Remoto')", (ag['cliente_id'], token, expiracao))
             except sqlite3.OperationalError:
-                # Cria a tabela de apoio dinamicamente caso não exista
                 conn.execute('''CREATE TABLE IF NOT EXISTS anamneses_termos (id INTEGER PRIMARY KEY AUTOINCREMENT, cliente_id INTEGER, token_temporario TEXT, data_expiracao_token TEXT, origem_preenchimento TEXT)''')
                 conn.execute("INSERT INTO anamneses_termos (cliente_id, token_temporario, data_expiracao_token, origem_preenchimento) VALUES (?, ?, ?, 'Link Remoto')", (ag['cliente_id'], token, expiracao))
 
-            link_remoto = f"{request.host_url}remoto/token/{token}"
-            msg = f"Olá, {ag['cliente_nome']}! Para agilizar seu atendimento, por favor, preencha sua ficha de anamnese clicando no link a seguir (válido por 60 min): {link_remoto}"
+            link_remoto = f"http://{obter_ip_local()}:5000/remoto/token/{token}"
+            msg = f"Olá, {ag['cliente_nome']}! Você já está aguardando seu atendimento. Por favor, preencha sua ficha de anamnese clicando no link a seguir (válido por 60 min):\n{link_remoto}"
             conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (ag['telefone'], msg))
 
     conn.execute("UPDATE agendamentos SET status = ? WHERE id = ?", (novo_status, ag_id))
@@ -929,7 +1006,7 @@ def atualizar_agendamento():
     conn.close()
     
     msg_retorno = f"Status atualizado para '{novo_status}'."
-    if enviar_link:
+    if enviar_link or novo_status == 'Aguardando':
         msg_retorno += " Link de acesso remoto enviado ao WhatsApp do cliente!"
         
     return jsonify({"mensagem": msg_retorno})
@@ -983,7 +1060,7 @@ def remarcar_agendamento():
     
     nova_dt_obj = datetime.datetime.strptime(nova_data_hora, '%Y-%m-%d %H:%M:%S')
     msg = f"Olá, {cliente['nome']}! Seu agendamento de {nome_proc} foi REMARCADO com sucesso para o dia {nova_dt_obj.strftime('%d/%m/%Y')} às {nova_dt_obj.strftime('%H:%M')} na Smell CLINIC | SPA."
-    conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem) VALUES (?, ?)", (cliente['telefone'], msg))
+    conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (cliente['telefone'], msg))
     
     conn.commit()
     conn.close()
@@ -1082,7 +1159,7 @@ def novo_cliente():
     try:
         conn.execute("INSERT INTO clientes (nome, cpf, telefone, data_nascimento, instagram, profissao) VALUES (?, ?, ?, ?, ?, ?)", (nome, cpf, telefone_formatado, data_nascimento, instagram, profissao))
         msg_boas_vindas = f"Olá, {nome}! Seu cadastro na Smell CLINIC | SPA foi realizado com sucesso. Seja muito bem-vindo(a)!"
-        conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem) VALUES (?, ?)", (telefone_formatado, msg_boas_vindas))
+        conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (telefone_formatado, msg_boas_vindas))
         conn.commit()
         mensagem = "Cliente cadastrado com sucesso! O DDI/DDD foi formatado automaticamente."
     except sqlite3.IntegrityError:
