@@ -1,0 +1,119 @@
+/* ==========================================================================
+   1. IMPORTAÇÃO DE FONTES E VARIÁVEIS GLOBAIS
+   ========================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+
+:root {
+    --color-smell-primary: #077626;     
+    --color-clinic-spa: #8b347a;        
+    --bg-main: #f8f9fa;
+    --bg-card: #ffffff;
+    --text-dark: #2d3748;
+    --text-muted: #718096;
+    --border-color: #e2e8f0;
+    --sidebar-width: 260px;
+    --status-agendado: #fef08a;         
+    --status-confirmado: #bbf7d0;       
+    --status-atendimento: #bfdbfe;      
+    --status-concluido: #e2e8f0;        
+    --status-atrasado: #fecaca;         
+}
+
+/* ==========================================================================
+   2. RESET E ESTILOS GLOBAIS
+   ========================================================================== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Montserrat', sans-serif; background-color: var(--bg-main); color: var(--text-dark); display: flex; min-height: 100vh; overflow-x: hidden; }
+.font-smell-title { font-family: 'Benedict', 'Georgia', serif; color: var(--color-smell-primary); font-weight: bold; }
+.font-clinic-subtitle { font-family: 'Montserrat', sans-serif; color: var(--color-clinic-spa); text-transform: uppercase; letter-spacing: 2px; }
+
+/* ==========================================================================
+   3. PAINEL LATERAL FIXO
+   ========================================================================== */
+.sidebar { width: var(--sidebar-width); background-color: var(--bg-card); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; position: fixed; top: 0; bottom: 0; left: 0; z-index: 100; }
+.sidebar-brand { padding: 24px; text-align: center; border-bottom: 1px solid var(--border-color); }
+.sidebar-brand h1 { font-size: 1.8rem; margin-bottom: 2px; }
+.sidebar-brand span { font-size: 0.75rem; display: block; }
+.sidebar-menu { list-style: none; padding: 24px 12px; flex-grow: 1; }
+.sidebar-menu li { margin-bottom: 8px; }
+.sidebar-menu a { display: flex; align-items: center; padding: 12px 16px; color: var(--text-dark); text-decoration: none; font-weight: 500; border-radius: 8px; transition: all 0.2s ease; }
+.sidebar-menu a:hover, .sidebar-menu li.active a { background-color: #f3e8ff; color: var(--color-clinic-spa); }
+.whatsapp-status-indicator { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-left: auto; }
+.whatsapp-status-indicator.connected { background-color: #22c55e; }
+.whatsapp-status-indicator.disconnected { background-color: #ef4444; animation: pulse 1.5s infinite; }
+
+/* ==========================================================================
+   4. ÁREA DE CONTEÚDO PRINCIPAL
+   ========================================================================== */
+.main-content { margin-left: var(--sidebar-width); flex-grow: 1; padding: 40px; min-width: 0; }
+.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+
+/* ==========================================================================
+   5. GRADE DA AGENDA DIÁRIA E CALENDÁRIO
+   ========================================================================== */
+.agenda-container { background-color: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); overflow: hidden; }
+.agenda-grid { display: grid; grid-template-columns: 80px repeat(auto-fit, minmax(200px, 1fr)); border-bottom: 1px solid var(--border-color); }
+.agenda-header-cell { padding: 16px; text-align: center; font-weight: 600; border-right: 1px solid var(--border-color); background-color: #fafafa; }
+.agenda-time-column { text-align: center; font-size: 0.85rem; color: var(--text-muted); font-weight: 500; padding: 12px 0; border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); background-color: #fafafa; }
+.agenda-slot-cell { border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); min-height: 50px; position: relative; padding: 4px; }
+
+.calendario-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
+.calendario-header { text-align: center; font-weight: 600; color: var(--text-muted); padding: 8px 0; font-size: 0.9rem; }
+.calendario-dia { border: 1px solid var(--border-color); border-radius: 8px; min-height: 100px; padding: 12px; background-color: var(--bg-card); transition: transform 0.1s ease, border-color 0.1s ease; display: flex; flex-direction: column; cursor: pointer; }
+.calendario-dia:hover { transform: translateY(-2px); border-color: var(--color-clinic-spa); box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+.calendario-dia.hoje { background-color: #fdf4ff; border-color: var(--color-clinic-spa); }
+.badge-agendamento { background-color: var(--color-clinic-spa); color: white; border-radius: 12px; padding: 4px 8px; font-size: 0.75rem; font-weight: 600; margin-top: 8px; text-align: center; display: inline-block; }
+
+/* ==========================================================================
+   6. COMPONENTES DE FORMULÁRIO E MODAIS
+   ========================================================================== */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.4); display: flex; justify-content: center; align-items: center; z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
+.modal-overlay.active { opacity: 1; pointer-events: auto; overflow-y: auto; padding: 20px; }
+.modal-wrapper { background-color: var(--bg-card); border-radius: 12px; width: 100%; max-width: 500px; padding: 32px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); margin: auto; }
+.form-group { margin-bottom: 20px; }
+.form-group label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; color: var(--text-dark); }
+.form-control { width: 100%; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; font-family: 'Montserrat', sans-serif; color: var(--text-dark); font-size: 0.9rem; transition: border-color 0.2s ease; }
+.form-control:focus { outline: none; border-color: var(--color-clinic-spa); }
+.btn { display: inline-flex; align-items: center; justify-content: center; padding: 10px 20px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; cursor: pointer; border: none; font-family: 'Montserrat', sans-serif; transition: all 0.2s ease; }
+.btn-primary { background-color: var(--color-clinic-spa); color: white; }
+.btn-primary:hover { background-color: #722463; }
+.btn-secondary { background-color: var(--border-color); color: var(--text-dark); }
+.btn-secondary:hover { background-color: #cbd5e1; }
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+
+/* ==========================================================================
+   7. ELEMENTOS EXCLUSIVOS MOBILE E TOASTS (BACKUP)
+   ========================================================================== */
+.mobile-topbar { display: none; background-color: var(--color-smell-primary); padding: 16px 24px; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 200; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.mobile-menu-btn { background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; }
+.sidebar-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 90; opacity: 0; transition: opacity 0.3s; }
+.sidebar-overlay.active { display: block; opacity: 1; }
+
+.backup-toast {
+    width: 320px; background: white;
+    border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    border-left: 4px solid #10b981; padding: 16px;
+    transform: translateY(150%); transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.backup-toast.show { transform: translateY(0) !important; }
+.backup-progress-bg { height: 6px; background: var(--border-color); border-radius: 3px; overflow: hidden; margin-top: 12px; }
+.backup-progress-bar { height: 100%; background: #10b981; width: 0%; transition: width 0.3s ease; }
+
+.setup-modal-overlay {
+    background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center;
+    backdrop-filter: blur(5px);
+}
+
+@media (max-width: 768px) {
+    body { flex-direction: column; }
+    .mobile-topbar { display: flex; width: 100%; height: auto; }
+    .sidebar { position: fixed; top: 0; left: 0; height: 100vh; transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 1000; }
+    .sidebar.open { transform: translateX(0); box-shadow: 4px 0 20px rgba(0,0,0,0.15); }
+    .main-content { margin-left: 0; padding: 16px; width: 100%; }
+    .page-header { flex-direction: column; align-items: flex-start; gap: 16px; }
+    .page-header > div:last-child { width: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
+    div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+    .agenda-container table, .calendario-grid { min-width: 600px; }
+    .agenda-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .modal-wrapper { padding: 24px; margin: auto; }
+}
