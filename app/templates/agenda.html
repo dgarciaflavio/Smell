@@ -46,7 +46,7 @@
         color: var(--text-dark);
         position: sticky;
         top: 0;
-        z-index: 20;
+        z-index: 100; /* << ATUALIZADO PARA NÃO SER COBERTO PELOS CARDS */
     }
 
     /* Células da coluna de tempo (Hora Cheia e Meia Hora) */
@@ -331,6 +331,13 @@
                         <option value="Cancelado">Cancelado</option>
                     </select>
                 </div>
+                
+                <div class="mb-3 form-check text-start mt-2" style="background-color: #f0fdf4; padding: 12px 12px 12px 35px; border-radius: 8px; border: 1px dashed #22c55e;">
+                    <input type="checkbox" class="form-check-input" id="enviar_link_anamnese" name="enviar_link_anamnese">
+                    <label class="form-check-label" for="enviar_link_anamnese" style="font-weight: 600; color: #166534; cursor: pointer;">
+                        📱 Enviar Link de Preenchimento Remoto via WhatsApp (Expira em 60 min)
+                    </label>
+                </div>
 
                 <div class="form-group" id="grupo-pagamento" style="display: none; margin-top: 16px; padding: 16px; background-color: #f8fafc; border-radius: 8px; border: 1px dashed var(--color-smell-primary);">
                     <label style="color: var(--color-smell-primary);">Lançamento no Caixa (Forma de Pagamento)</label>
@@ -441,6 +448,7 @@
                 document.getElementById('gerenciar-status').value = ag.status || 'Agendado';
                 
                 document.getElementById('gerenciar-status').dispatchEvent(new Event('change'));
+                document.getElementById('enviar_link_anamnese').checked = false; // reseta a caixinha
                 
                 // Reseta visibilidade da remarcação ao abrir
                 cancelarRemarcacao();

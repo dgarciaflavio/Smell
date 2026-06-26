@@ -34,7 +34,6 @@
     
     <input type="hidden" name="cliente_id" value="{{ cliente.id }}">
     
-    <!-- SEÇÃO 1: DADOS PESSOAIS E ERGONÔMICOS -->
     <div class="form-section">
         <h3 class="section-title">1. Dados Pessoais e Ergonômicos</h3>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px;">
@@ -56,7 +55,6 @@
         </div>
     </div>
 
-    <!-- SEÇÃO 2: HISTÓRICO DA QUEIXA PRINCIPAL -->
     <div class="form-section">
         <h3 class="section-title">2. Histórico da Queixa Principal & Dor</h3>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 24px; margin-bottom: 24px;">
@@ -112,7 +110,6 @@
         </div>
     </div>
 
-    <!-- SEÇÃO 3: TRIAGEM DE SEGURANÇA -->
     <div class="form-section">
         <h3 class="section-title" style="color: #ef4444;">3. Triagem de Segurança & Alertas Médicos</h3>
         <div style="display: grid; gap: 16px;">
@@ -147,7 +144,6 @@
         </div>
     </div>
 
-    <!-- SEÇÃO 4: DETALHAMENTO -->
     <div class="form-section">
         <h3 class="section-title">4. Detalhamento de Condições Específicas</h3>
         <div class="form-group">
@@ -160,7 +156,6 @@
         </div>
     </div>
 
-    <!-- SEÇÃO 5: HÁBITOS DE VIDA -->
     <div class="form-section">
         <h3 class="section-title">5. Hábitos de Vida & Bem-Estar</h3>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px;">
@@ -183,7 +178,6 @@
         </div>
     </div>
 
-    <!-- SEÇÃO 6: AVALIAÇÃO FÍSICA (Oculta no Totem) -->
     {% if not modo_cliente %}
     <div class="form-section">
         <h3 class="section-title">6. Avaliação Física & Palpatória (Uso do Profissional)</h3>
@@ -210,28 +204,48 @@
     </div>
     {% endif %}
 
-    <!-- SEÇÃO 7: TERMO E ASSINATURA -->
     <div class="form-section" style="background-color: #f8fafc; border: 2px solid #8b5cf6;">
         <h3 class="section-title" style="border-bottom: none; margin-bottom: 8px; color: #8b5cf6;">Termo de Consentimento para Massoterapia</h3>
         <p id="texto-termo" style="font-size: 0.85rem; color: #475569; text-align: justify; line-height: 1.5; margin-bottom: 24px;">
             Declaro que prestei todas as informações sobre minhas condições de saúde de forma fidedigna, eximindo o profissional de responsabilidades sobre sintomas decorrentes de omissões. Declaro estar ciente de que as técnicas aplicadas compreendem manipulações corporais voltadas ao alívio de tensões, relaxamento ou estimulação circulatória e linfática. Estou ciente de que, após as sessões, é perfeitamente normal apresentar sintomas temporários como sonolência, leve fadiga ou sensibilidade muscular difusa nas áreas trabalhadas. Confirmo que fui orientado quanto às contraindicações e concordo em submeter-me aos protocolos de massoterapia e técnicas corporais associadas.
         </p>
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; align-items: start;">
-            <div>
-                <label style="font-weight: bold; display: block; margin-bottom: 8px;">Assinatura do Cliente</label>
-                
+        <div class="row text-center mb-4">
+            <div class="col-md-4 mb-3">
+                <label style="font-weight: bold; display: block; margin-bottom: 8px;">1. Assinatura do Cliente</label>
                 {% if modo_avaliacao %}
-                    <img src="{{ anamnese_obj.assinatura_base64 }}" style="width: 100%; height: 150px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; object-fit: contain;">
+                    <img src="{{ anamnese_obj.assinatura_base64 }}" style="width: 100%; height: 120px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; object-fit: contain;">
                 {% else %}
-                    <canvas id="assinaturaCanvas" style="width: 100%; height: 150px; background: white; border: 1px dashed #94a3b8; border-radius: 8px; touch-action: none; cursor: crosshair;"></canvas>
-                    <button type="button" class="btn btn-secondary" onclick="limparAssinatura()" style="margin-top: 8px; font-size: 0.8rem; padding: 4px 12px;">Refazer Assinatura</button>
+                    <canvas id="assinatura1" style="width: 100%; height: 120px; background: white; border: 1px dashed #94a3b8; border-radius: 8px; touch-action: none; cursor: crosshair;"></canvas>
+                    <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="limparAssinatura(1)">Limpar Assinatura 1</button>
                 {% endif %}
             </div>
             
+            <div class="col-md-4 mb-3">
+                <label style="font-weight: bold; display: block; margin-bottom: 8px;">2. Assinatura Profissional</label>
+                {% if modo_avaliacao %}
+                    <img src="{{ anamnese_obj.assinatura_profissional_base64 }}" style="width: 100%; height: 120px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; object-fit: contain;">
+                {% else %}
+                    <canvas id="assinatura2" style="width: 100%; height: 120px; background: white; border: 1px dashed #94a3b8; border-radius: 8px; touch-action: none; cursor: crosshair;"></canvas>
+                    <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="limparAssinatura(2)">Limpar Assinatura 2</button>
+                {% endif %}
+            </div>
+            
+            <div class="col-md-4 mb-3">
+                <label style="font-weight: bold; display: block; margin-bottom: 8px;">3. Assinatura Testemunha</label>
+                {% if modo_avaliacao %}
+                    <img src="{{ anamnese_obj.assinatura_testemunha_base64 }}" style="width: 100%; height: 120px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; object-fit: contain;">
+                {% else %}
+                    <canvas id="assinatura3" style="width: 100%; height: 120px; background: white; border: 1px dashed #94a3b8; border-radius: 8px; touch-action: none; cursor: crosshair;"></canvas>
+                    <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="limparAssinatura(3)">Limpar Assinatura 3</button>
+                {% endif %}
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr; gap: 24px; align-items: start;">
             <div>
                 {% if not modo_cliente %}
-                    <label style="font-weight: bold; display: block; margin-bottom: 8px;">Profissional Responsável</label>
+                    <label style="font-weight: bold; display: block; margin-bottom: 8px;">Profissional Responsável do Prontuário</label>
                     <select name="profissional_avaliador" id="profissional_avaliador" class="form-control" style="font-weight: bold;" required>
                         <option value="">Selecione quem está avaliando...</option>
                         {% for p in profissionais %}
@@ -242,18 +256,18 @@
 
                 {% if modo_cliente %}
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 16px;">
-                        Ao clicar em "Finalizar", os dados serão salvos e a avaliação técnica será realizada pelo profissional na sala.
+                        Ao clicar em "Finalizar", os dados serão salvos e a tela se encerrará por segurança.
                     </p>
                 {% else %}
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 16px;">
-                        Ao clicar em "Salvar", os dados e a assinatura serão anexados permanentemente ao prontuário.
+                        Ao clicar em "Salvar", os dados e assinaturas serão anexados permanentemente ao prontuário.
                     </p>
                 {% endif %}
 
                 <button type="button" class="btn btn-primary" onclick="salvarAnamnese()" style="width: 100%; height: 50px; font-size: 1.1rem; margin-top: 8px; background-color: #8b5cf6;">
                     <i class="fa-solid fa-lock" style="margin-right: 8px;"></i> 
                     {% if modo_cliente %}
-                        Finalizar Minha Parte
+                        Finalizar Preenchimento (10 Segundos)
                     {% elif modo_avaliacao %}
                         Anexar Avaliação e Salvar
                     {% else %}
@@ -291,61 +305,51 @@
     {% endif %}
 
     {% if not modo_avaliacao %}
-    const canvas = document.getElementById('assinaturaCanvas');
-    const ctx = canvas.getContext('2d');
-    let desenhando = false;
+    
+    // Função universal para criar motores de desenho para Canvas infinitos
+    function setupCanvas(canvasId) {
+        const canvas = document.getElementById(canvasId);
+        if(!canvas) return null;
+        const ctx = canvas.getContext('2d');
+        let desenhando = false;
 
-    function redimensionarCanvas() {
-        const rect = canvas.getBoundingClientRect();
-        canvas.width = rect.width;
-        canvas.height = rect.height;
-        ctx.lineWidth = 2;
-        ctx.lineCap = 'round';
-        ctx.strokeStyle = '#000000';
-    }
-    window.addEventListener('resize', redimensionarCanvas);
-    redimensionarCanvas();
+        function redimensionarCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = '#000000';
+        }
+        window.addEventListener('resize', redimensionarCanvas);
+        redimensionarCanvas();
 
-    function getMousePos(e) {
-        const rect = canvas.getBoundingClientRect();
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        return { x: clientX - rect.left, y: clientY - rect.top };
-    }
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
 
-    function iniciarDesenho(e) {
-        e.preventDefault();
-        desenhando = true;
-        const pos = getMousePos(e);
-        ctx.beginPath();
-        ctx.moveTo(pos.x, pos.y);
-    }
+        canvas.addEventListener('mousedown', e => { e.preventDefault(); desenhando = true; ctx.beginPath(); ctx.moveTo(getMousePos(e).x, getMousePos(e).y); });
+        canvas.addEventListener('mousemove', e => { if(!desenhando) return; e.preventDefault(); ctx.lineTo(getMousePos(e).x, getMousePos(e).y); ctx.stroke(); });
+        const pararDesenho = e => { if(!desenhando) return; e.preventDefault(); desenhando = false; ctx.closePath(); };
+        canvas.addEventListener('mouseup', pararDesenho);
+        canvas.addEventListener('mouseout', pararDesenho);
+        canvas.addEventListener('touchstart', e => { e.preventDefault(); desenhando = true; ctx.beginPath(); ctx.moveTo(getMousePos(e).x, getMousePos(e).y); }, {passive: false});
+        canvas.addEventListener('touchmove', e => { if(!desenhando) return; e.preventDefault(); ctx.lineTo(getMousePos(e).x, getMousePos(e).y); ctx.stroke(); }, {passive: false});
+        canvas.addEventListener('touchend', pararDesenho);
 
-    function desenhar(e) {
-        if (!desenhando) return;
-        e.preventDefault();
-        const pos = getMousePos(e);
-        ctx.lineTo(pos.x, pos.y);
-        ctx.stroke();
-    }
-
-    function pararDesenho(e) {
-        if (!desenhando) return;
-        e.preventDefault();
-        desenhando = false;
-        ctx.closePath();
+        return { canvas, ctx };
     }
 
-    canvas.addEventListener('mousedown', iniciarDesenho);
-    canvas.addEventListener('mousemove', desenhar);
-    canvas.addEventListener('mouseup', pararDesenho);
-    canvas.addEventListener('mouseout', pararDesenho);
-    canvas.addEventListener('touchstart', iniciarDesenho, {passive: false});
-    canvas.addEventListener('touchmove', desenhar, {passive: false});
-    canvas.addEventListener('touchend', pararDesenho);
+    const sig1 = setupCanvas('assinatura1');
+    const sig2 = setupCanvas('assinatura2');
+    const sig3 = setupCanvas('assinatura3');
 
-    function limparAssinatura() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    function limparAssinatura(num) {
+        let obj = num === 1 ? sig1 : (num === 2 ? sig2 : sig3);
+        if(obj) obj.ctx.clearRect(0, 0, obj.canvas.width, obj.canvas.height);
     }
     {% endif %}
 
@@ -362,10 +366,10 @@
 
         {% if not modo_avaliacao %}
             const blank = document.createElement('canvas');
-            blank.width = canvas.width;
-            blank.height = canvas.height;
-            if (canvas.toDataURL() === blank.toDataURL()) {
-                alert('Por favor, colete a assinatura do cliente.');
+            blank.width = sig1.canvas.width;
+            blank.height = sig1.canvas.height;
+            if (sig1.canvas.toDataURL() === blank.toDataURL()) {
+                alert('A Assinatura do Cliente (1) é obrigatória para prosseguir.');
                 return;
             }
         {% endif %}
@@ -396,7 +400,15 @@
         {% else %}
             pacote.append('tipo', 'Corporal');
             pacote.append('termo_assinado', document.getElementById('texto-termo').innerText);
-            pacote.append('assinatura_base64', canvas.toDataURL("image/png"));
+            pacote.append('assinatura_cliente_base64', sig1.canvas.toDataURL("image/png"));
+            pacote.append('assinatura_profissional_base64', sig2.canvas.toDataURL("image/png"));
+            pacote.append('assinatura_testemunha_base64', sig3.canvas.toDataURL("image/png"));
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('token')) {
+                pacote.append('token', urlParams.get('token'));
+            }
+            
             const url = "{{ url_for('main.salvar_anamnese') }}";
         {% endif %}
 
@@ -404,7 +416,30 @@
         .then(response => response.json())
         .then(data => {
             {% if modo_cliente %}
-                window.location.href = "{{ url_for('main.totem_sucesso') }}";
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.has('token')) {
+                    // MODO TÚNEL REMOTO: Mensagem Bonita e Autodestruição em 10 Segundos
+                    document.body.innerHTML = `
+                        <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #8b5cf6; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; font-family: sans-serif; padding: 20px; text-align: center;">
+                            <h1 style="font-size: 2.5rem; margin-bottom: 20px;">Obrigado por preencher seus dados! 💜</h1>
+                            <h2 style="font-size: 1.5rem; margin-bottom: 30px;">Por favor, informe na recepção que sua ficha já está pronta.</h2>
+                            <div style="font-size: 5rem; font-weight: bold; background: white; color: #8b5cf6; padding: 10px 40px; border-radius: 20px; min-width:150px;" id="contador">10</div>
+                            <p style="margin-top: 30px; opacity: 0.8;">Esta tela será encerrada por segurança em breve.</p>
+                        </div>
+                    `;
+                    let contagem = 10;
+                    const intervalo = setInterval(() => {
+                        contagem--;
+                        document.getElementById('contador').innerText = contagem;
+                        if (contagem <= 0) {
+                            clearInterval(intervalo);
+                            window.location.href = "about:blank"; 
+                        }
+                    }, 1000);
+                } else {
+                    // MODO TOTEM DA LOJA:
+                    window.location.href = "{{ url_for('main.totem_sucesso') }}";
+                }
             {% else %}
                 alert(data.mensagem);
                 window.location.href = "{{ url_for('main.prontuario', cliente_id=cliente.id) }}";

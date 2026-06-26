@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, current_app, send_from_directory, send_file
+from flask import Blueprint, render_template, request, jsonify, current_app, send_from_directory, send_file, render_template_string
 from app.database import get_db_connection
 from app.estoque_database import get_estoque_db_connection
 import os
@@ -15,6 +15,7 @@ import random
 import pandas as pd
 import io
 import subprocess
+import secrets
 
 main_bp = Blueprint('main', __name__)
 
@@ -23,6 +24,141 @@ bot_process = None
 
 # Variável global para rastrear a barra de progresso do backup
 status_backup_global = {"em_andamento": False, "mensagem": "", "progresso": 0}
+
+# Controle de rotinas em background para não duplicar no Flask
+BACKGROUND_TASKS_STARTED = False
+
+def get_db_absoluto(root_path):
+    """Conexão direta para ser usada pelas threads em background (evita erros de contexto do Flask)"""
+    db_path = os.path.join(root_path, '..', 'smell_clinic_spa.db')
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def garantir_colunas_notificacao(root_path):
+    """Garante que as colunas de controle de notificação existam no banco de dados"""
+    conn = get_db_absoluto(root_path)
+    try:
+        conn.execute("ALTER TABLE agendamentos ADD COLUMN lembrete_48h_enviado INTEGER DEFAULT 0")
+    except sqlite3.OperationalError: pass
+    try:
+        conn.execute("ALTER TABLE agendamentos ADD COLUMN lembrete_2h_enviado INTEGER DEFAULT 0")
+    except sqlite3.OperationalError: pass
+    try:
+        conn.execute("ALTER TABLE agendamentos ADD COLUMN avaliacao_enviada INTEGER DEFAULT 0")
+    except sqlite3.OperationalError: pass
+    conn.commit()
+    conn.close()
+
+def processar_notificacoes_inteligentes(root_path):
+    """Lógica principal de envio de lembretes e avaliações"""
+    conn = get_db_absoluto(root_path)
+    try:
+        agora = datetime.datetime.now()
+        
+        # Pega horários de funcionamento
+        config = conn.execute("SELECT hora_abertura, hora_fechamento FROM configuracoes_clinica LIMIT 1").fetchone()
+        abertura = int(config['hora_abertura']) if config and config['hora_abertura'] else 8
+        fechamento = int(config['hora_fechamento']) if config and config['hora_fechamento'] else 20
+        
+        # ==========================================================
+        # 1 e 2: LEMBRETES DE AGENDAMENTOS FUTUROS (48h e 2h)
+        # ==========================================================
+        agendamentos_futuros = conn.execute("""
+            SELECT a.id, a.data_hora_inicio, a.lembrete_48h_enviado, a.lembrete_2h_enviado, 
+                   c.nome, c.telefone 
+            FROM agendamentos a 
+            JOIN clientes c ON a.cliente_id = c.id 
+            WHERE a.status NOT IN ('Cancelado', 'Concluído')
+        """).fetchall()
+        
+        for ag in agendamentos_futuros:
+            try:
+                dt_inicio = datetime.datetime.strptime(ag['data_hora_inicio'], "%Y-%m-%d %H:%M:%S")
+                
+                # Regra 1: Lembrete 48h (Enviado às 10h da manhã)
+                if ag['lembrete_48h_enviado'] == 0:
+                    diferenca_dias = (dt_inicio.date() - agora.date()).days
+                    if diferenca_dias == 2 and agora.hour >= 10:
+                        msg_48h = f"Olá, {ag['nome']}! Passando para lembrar do seu agendamento na Smell CLINIC | SPA em dois dias, {dt_inicio.strftime('%d/%m/%Y')} às {dt_inicio.strftime('%H:%M')}."
+                        conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (ag['telefone'], msg_48h))
+                        conn.execute("UPDATE agendamentos SET lembrete_48h_enviado = 1 WHERE id = ?", (ag['id'],))
+                        
+                # Regra 2: Lembrete 2h (ou fechamento do dia anterior)
+                if ag['lembrete_2h_enviado'] == 0:
+                    hora_agendamento = dt_inicio.hour
+                    
+                    if (hora_agendamento - 2) <= abertura:
+                        # Se for <= abertura, envia 1h antes de fechar no dia anterior
+                        dt_alvo = datetime.datetime(dt_inicio.year, dt_inicio.month, dt_inicio.day, fechamento - 1, 0, 0) - datetime.timedelta(days=1)
+                    else:
+                        # Padrão: 2 horas antes no mesmo dia
+                        dt_alvo = dt_inicio - datetime.timedelta(hours=2)
+                        
+                    if agora >= dt_alvo:
+                        msg_2h = f"Olá, {ag['nome']}! Seu agendamento na Smell CLINIC | SPA é logo mais, às {dt_inicio.strftime('%H:%M')}. Estamos te esperando com muito carinho!"
+                        conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (ag['telefone'], msg_2h))
+                        conn.execute("UPDATE agendamentos SET lembrete_2h_enviado = 1 WHERE id = ?", (ag['id'],))
+            except Exception as e:
+                print(f"Erro ao processar lembrete para ID {ag['id']}: {e}")
+
+        # ==========================================================
+        # 3. AVALIAÇÃO PÓS-ATENDIMENTO (Dia Seguinte)
+        # ==========================================================
+        ontem = agora.date() - datetime.timedelta(days=1)
+        concluidos_ontem = conn.execute("""
+            SELECT a.id, a.cliente_id, a.data_hora_inicio, c.nome, c.telefone 
+            FROM agendamentos a 
+            JOIN clientes c ON a.cliente_id = c.id 
+            WHERE a.status = 'Concluído' 
+            AND a.avaliacao_enviada = 0 
+            AND date(a.data_hora_inicio) = ?
+        """, (ontem.strftime('%Y-%m-%d'),)).fetchall()
+        
+        # Substitua este link curto caso você crie o seu no bit.ly
+        link_avaliacao = "https://bit.ly/4gc6M3D" 
+        
+        for ag in concluidos_ontem:
+            # Verifica se o cliente tem mais agendamentos futuros (Trata a regra do Combo/Sessão)
+            futuros = conn.execute("""
+                SELECT COUNT(id) as total 
+                FROM agendamentos 
+                WHERE cliente_id = ? AND data_hora_inicio > ? AND status != 'Cancelado'
+            """, (ag['cliente_id'], ag['data_hora_inicio'])).fetchone()
+            
+            # Se for 0, significa que foi o último ou único atendimento
+            if futuros['total'] == 0:
+                msg_aval = f"Olá, {ag['nome']}! Agradecemos por escolher a Smell CLINIC | SPA. Sua opinião é muito importante para nós! Poderia avaliar nosso atendimento e deixar um comentário? É rapidinho: {link_avaliacao}"
+                conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (ag['telefone'], msg_aval))
+                
+            # De qualquer forma, marca a flag como enviada para não processar este ID amanhã novamente
+            conn.execute("UPDATE agendamentos SET avaliacao_enviada = 1 WHERE id = ?", (ag['id'],))
+            
+        conn.commit()
+    except Exception as e:
+        print(f"Erro no motor inteligente de notificações: {e}")
+    finally:
+        conn.close()
+
+def loop_notificacoes_background(root_path):
+    """Loop infinito que roda em paralelo ao Flask sem travá-lo"""
+    while True:
+        processar_notificacoes_inteligentes(root_path)
+        time.sleep(60) # Verifica as regras a cada 1 minuto
+
+@main_bp.before_app_request
+def iniciar_motores_background():
+    """Inicia a thread inteligente no momento que a aplicação recebe a primeira requisição"""
+    global BACKGROUND_TASKS_STARTED
+    if not BACKGROUND_TASKS_STARTED:
+        BACKGROUND_TASKS_STARTED = True
+        root_path = current_app.root_path
+        garantir_colunas_notificacao(root_path)
+        
+        # Cria a thread invisível de notificações
+        thread_notif = threading.Thread(target=loop_notificacoes_background, args=(root_path,), daemon=True)
+        thread_notif.start()
+        print("[SISTEMA] Motor Inteligente de Lembretes e Avaliações Iniciado com Sucesso.")
 
 def rotina_de_backup_fantasma(pasta_destino, root_path):
     global status_backup_global
@@ -467,6 +603,52 @@ def totem_pes(cliente_id):
 def totem_sucesso():
     return render_template('totem_sucesso.html', modo_cliente=True)
 
+# ==============================================================
+# NOVA ROTA DO TÚNEL REMOTO DE PREENCHIMENTO DE ANAMNESE
+# ==============================================================
+@main_bp.route('/remoto/token/<token>', endpoint='acesso_remoto')
+def acesso_remoto(token):
+    conn = get_db_connection()
+    agora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        registro = conn.execute("SELECT * FROM anamneses_termos WHERE token_temporario = ? AND data_expiracao_token > ?", (token, agora)).fetchone()
+    except sqlite3.OperationalError:
+        registro = None
+
+    if not registro:
+        conn.close()
+        return render_template_string("""
+            <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Link Expirado</title></head>
+            <body style="font-family: sans-serif; text-align: center; padding: 40px; background: #f8d7da; color: #721c24;">
+                <h2>⚠️ Link Expirado ou Inválido</h2>
+                <p>Este link de acesso expirou por segurança ou já foi utilizado. Por favor, solicite um novo na recepção ou utilize o tablet da clínica.</p>
+            </body></html>
+        """)
+
+    cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (registro['cliente_id'],)).fetchone()
+    conn.close()
+
+    # Menu de seleção direto do link do WhatsApp
+    return render_template_string("""
+        <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Ficha de Anamnese</title>
+        <style>
+            body { font-family: sans-serif; text-align: center; padding: 20px; background: #f4f4f4; }
+            .container { background: white; padding: 30px; border-radius: 12px; max-width: 400px; margin: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+            .btn { display: block; width: 100%; padding: 15px; margin: 15px 0; background: #077626; color: white; text-decoration: none; border-radius: 8px; font-size: 18px; font-weight: bold; border: none;}
+            .btn:hover { background: #055a1d; }
+        </style>
+        </head><body>
+            <div class="container">
+                <img src="/static/img/LogoSmell.png" style="max-width: 150px; margin-bottom: 20px;" alt="Smell Clinic">
+                <h2 style="color: #333;">Olá, {{ cliente['nome'] }}!</h2>
+                <p style="color: #666; margin-bottom: 30px;">Selecione a ficha que deseja preencher hoje:</p>
+                <a href="/totem/cliente/{{ cliente['id'] }}/facial?token={{ token }}" class="btn">💆‍♀️ Anamnese Facial</a>
+                <a href="/totem/cliente/{{ cliente['id'] }}/corporal?token={{ token }}" class="btn">🧍‍♀️ Anamnese Corporal</a>
+                <a href="/totem/cliente/{{ cliente['id'] }}/pes?token={{ token }}" class="btn">👣 Anamnese dos Pés</a>
+            </div>
+        </body></html>
+    """, cliente=dict(cliente), token=token)
+
 @main_bp.route('/api/anamnese/salvar', methods=['POST'])
 def salvar_anamnese():
     cliente_id = request.form.get('cliente_id')
@@ -474,10 +656,24 @@ def salvar_anamnese():
     tipo = request.form.get('tipo')
     dados_json = request.form.get('dados_json')
     termo_assinado = request.form.get('termo_assinado')
-    assinatura_base64 = request.form.get('assinatura_base64')
+    
+    # As três assinaturas agora são recebidas
+    assinatura_cliente = request.form.get('assinatura_cliente_base64')
+    assinatura_profissional = request.form.get('assinatura_profissional_base64')
+    assinatura_testemunha = request.form.get('assinatura_testemunha_base64')
+    
     data_retroativa = request.form.get('data_retroativa')
+    token = request.form.get('token') # Usado no túnel remoto
     
     conn = get_db_connection()
+    
+    # Garante que as novas colunas existam no banco sem precisar apagar a tabela antiga
+    try:
+        conn.execute("ALTER TABLE anamneses ADD COLUMN assinatura_profissional_base64 TEXT")
+    except sqlite3.OperationalError: pass
+    try:
+        conn.execute("ALTER TABLE anamneses ADD COLUMN assinatura_testemunha_base64 TEXT")
+    except sqlite3.OperationalError: pass
     
     if data_retroativa:
         dt_str = data_retroativa
@@ -495,12 +691,25 @@ def salvar_anamnese():
             pass
 
     if data_retroativa:
-        conn.execute("INSERT INTO anamneses (cliente_id, profissional_nome, tipo, dados_json, termo_assinado, assinatura_base64, data_preenchimento) VALUES (?, ?, ?, ?, ?, ?, ?)", (cliente_id, profissional_nome, tipo, dados_json, termo_assinado, assinatura_base64, data_retroativa))
+        conn.execute("""
+            INSERT INTO anamneses (cliente_id, profissional_nome, tipo, dados_json, termo_assinado, assinatura_base64, assinatura_profissional_base64, assinatura_testemunha_base64, data_preenchimento) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (cliente_id, profissional_nome, tipo, dados_json, termo_assinado, assinatura_cliente, assinatura_profissional, assinatura_testemunha, data_retroativa))
     else:
-        conn.execute("INSERT INTO anamneses (cliente_id, profissional_nome, tipo, dados_json, termo_assinado, assinatura_base64) VALUES (?, ?, ?, ?, ?, ?)", (cliente_id, profissional_nome, tipo, dados_json, termo_assinado, assinatura_base64))
+        conn.execute("""
+            INSERT INTO anamneses (cliente_id, profissional_nome, tipo, dados_json, termo_assinado, assinatura_base64, assinatura_profissional_base64, assinatura_testemunha_base64) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (cliente_id, profissional_nome, tipo, dados_json, termo_assinado, assinatura_cliente, assinatura_profissional, assinatura_testemunha))
+    
+    # Se o cliente usou o link remoto, destrói o token imediatamente para segurança
+    if token:
+        try:
+            conn.execute("UPDATE anamneses_termos SET data_expiracao_token = 'UTILIZADO' WHERE token_temporario = ?", (token,))
+        except sqlite3.OperationalError: pass
+        
     conn.commit()
     conn.close()
-    return jsonify({"mensagem": f"Anamnese {tipo} salva com sucesso!"})
+    return jsonify({"mensagem": f"Anamnese {tipo} salva com sucesso!", "erro": False})
 
 @main_bp.route('/api/anamnese/atualizar', methods=['POST'])
 def atualizar_anamnese():
@@ -615,10 +824,8 @@ def novo_agendamento():
     profissional_id = request.form.get('profissional_id')
     servico_id = request.form.get('servico_id')
     
-    # Suporte para receber múltiplas datas (caso combo ou pacote em dias separados)
     datas_horas = request.form.getlist('data_hora_inicio[]')
     
-    # Fallback caso o sistema envie no padrão anterior
     if not datas_horas:
         dt_unica = request.form.get('data_hora_inicio')
         if dt_unica:
@@ -635,7 +842,7 @@ def novo_agendamento():
         return jsonify({"mensagem": "Cliente não localizado. Cadastre o cliente primeiro!", "erro": True})
         
     servico = None
-    duracao_minutos = 60 # Duração de segurança
+    duracao_minutos = 60 
     nome_procedimento = "Procedimento ou Sessão"
     
     if servico_id:
@@ -644,7 +851,6 @@ def novo_agendamento():
             duracao_minutos = servico['duracao_minutos']
             nome_procedimento = servico['nome']
 
-    # 1. Varredura de conflitos (para garantir que TODAS as datas estão livres antes de marcar 1 sequer)
     for dt_str in datas_horas:
         if 'T' in dt_str: dt_str = dt_str.replace('T', ' ') + ':00'
         
@@ -664,7 +870,6 @@ def novo_agendamento():
             conn.close()
             return jsonify({"mensagem": f"⚠️ CONFLITO DE HORÁRIO!\nJá existe um agendamento para '{conflito['cliente_nome']}' na sala no dia e hora: {dt_str}.", "erro": True})
 
-    # 2. Insere todos os agendamentos no banco
     for dt_str in datas_horas:
         if 'T' in dt_str: dt_str = dt_str.replace('T', ' ') + ':00'
         
@@ -691,6 +896,8 @@ def atualizar_agendamento():
     ag_id = request.form.get('agendamento_id')
     novo_status = request.form.get('status')
     forma_pagamento = request.form.get('forma_pagamento')
+    enviar_link = request.form.get('enviar_link_anamnese') == 'on'
+    
     conn = get_db_connection()
     if novo_status == 'Concluído':
         agendamento = conn.execute("SELECT a.id, s.preco_padrao, s.nome FROM agendamentos a JOIN servicos s ON a.servico_id = s.id WHERE a.id = ?", (ag_id,)).fetchone()
@@ -699,10 +906,33 @@ def atualizar_agendamento():
             if not lancamento_existente:
                 pagamento_final = forma_pagamento if forma_pagamento else 'Pix'
                 conn.execute("INSERT INTO fluxo_caixa (agendamento_id, tipo, valor, forma_pagamento, observacoes) VALUES (?, 'Entrada', ?, ?, ?)", (ag_id, agendamento['preco_padrao'], pagamento_final, f"Pagamento - Serviço: {agendamento['nome']}"))
+
+    # LÓGICA DO TÚNEL DE ACESSO REMOTO PARA O CLIENTE
+    if enviar_link:
+        ag = conn.execute("SELECT a.*, c.nome as cliente_nome, c.telefone FROM agendamentos a JOIN clientes c ON a.cliente_id = c.id WHERE a.id = ?", (ag_id,)).fetchone()
+        if ag:
+            token = secrets.token_urlsafe(16)
+            expiracao = (datetime.datetime.now() + datetime.timedelta(minutes=60)).strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                conn.execute("INSERT INTO anamneses_termos (cliente_id, token_temporario, data_expiracao_token, origem_preenchimento) VALUES (?, ?, ?, 'Link Remoto')", (ag['cliente_id'], token, expiracao))
+            except sqlite3.OperationalError:
+                # Cria a tabela de apoio dinamicamente caso não exista
+                conn.execute('''CREATE TABLE IF NOT EXISTS anamneses_termos (id INTEGER PRIMARY KEY AUTOINCREMENT, cliente_id INTEGER, token_temporario TEXT, data_expiracao_token TEXT, origem_preenchimento TEXT)''')
+                conn.execute("INSERT INTO anamneses_termos (cliente_id, token_temporario, data_expiracao_token, origem_preenchimento) VALUES (?, ?, ?, 'Link Remoto')", (ag['cliente_id'], token, expiracao))
+
+            link_remoto = f"{request.host_url}remoto/token/{token}"
+            msg = f"Olá, {ag['cliente_nome']}! Para agilizar seu atendimento, por favor, preencha sua ficha de anamnese clicando no link a seguir (válido por 60 min): {link_remoto}"
+            conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (ag['telefone'], msg))
+
     conn.execute("UPDATE agendamentos SET status = ? WHERE id = ?", (novo_status, ag_id))
     conn.commit()
     conn.close()
-    return jsonify({"mensagem": f"Status atualizado para '{novo_status}'. \n(Se concluído, o caixa foi atualizado!)"})
+    
+    msg_retorno = f"Status atualizado para '{novo_status}'."
+    if enviar_link:
+        msg_retorno += " Link de acesso remoto enviado ao WhatsApp do cliente!"
+        
+    return jsonify({"mensagem": msg_retorno})
 
 @main_bp.route('/agendamento/remarcar', methods=['POST'])
 def remarcar_agendamento():
@@ -728,7 +958,6 @@ def remarcar_agendamento():
         duracao = servico['duracao_minutos']
         nome_proc = servico['nome']
     else:
-        # Fallback de cálculo caso seja um procedimento livre VIP/Combo sem ID de serviço vinculado diretamente
         inicio_original = datetime.datetime.strptime(agendamento['data_hora_inicio'], "%Y-%m-%d %H:%M:%S")
         fim_original = datetime.datetime.strptime(agendamento['data_hora_fim_previsto'], "%Y-%m-%d %H:%M:%S")
         duracao = int((fim_original - inicio_original).total_seconds() / 60)
@@ -737,7 +966,6 @@ def remarcar_agendamento():
     fim_dt = datetime.datetime.strptime(nova_data_hora, "%Y-%m-%d %H:%M:%S") + datetime.timedelta(minutes=duracao)
     nova_data_hora_fim = fim_dt.strftime("%Y-%m-%d %H:%M:%S")
     
-    # Verifica conflito na remarcação
     conflito = conn.execute("""
         SELECT c.nome as cliente_nome, COALESCE(s.nome, 'Procedimento') as servico_nome 
         FROM agendamentos a 
@@ -765,7 +993,7 @@ def remarcar_agendamento():
 @main_bp.route('/combo/novo', methods=['POST'])
 def novo_combo():
     nome_combo = request.form.get('nome_combo')
-    servicos = request.form.getlist('combo_servicos') # array com IDs
+    servicos = request.form.getlist('combo_servicos') 
     observacoes = request.form.get('observacoes', '')
     valor_base = request.form.get('valor_base', '0').replace('R$ ', '')
     porcentagem_desconto = request.form.get('porcentagem_desconto', '0')
@@ -773,7 +1001,6 @@ def novo_combo():
 
     try:
         conn = get_db_connection()
-        # Garante a tabela caso o schema original do sqlite do usuário ainda não tenha.
         conn.execute('''CREATE TABLE IF NOT EXISTS pacotes_combos (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             nome TEXT,
@@ -964,7 +1191,6 @@ def agendamentos_mes():
 def iniciar_motor_whatsapp():
     global bot_process
     
-    # Se já existir um processo ativo, não inicia outro
     if bot_process is None or bot_process.poll() is not None:
         qr_path = os.path.join(current_app.root_path, '..', 'qr_code.png')
         if os.path.exists(qr_path):
@@ -972,7 +1198,6 @@ def iniciar_motor_whatsapp():
             
         cwd = os.path.abspath(os.path.join(current_app.root_path, '..'))
         
-        # Inicia o motor do WhatsApp de forma "invisível" no Windows
         if sys.platform == 'win32':
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
