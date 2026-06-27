@@ -1,0 +1,9 @@
+@echo off
+echo Preparando dependencias (se houver)...
+playwright install chromium
+
+echo Iniciando o Bot do WhatsApp...
+start bot.exe
+
+echo Iniciando o Sistema SmellClinic...
+SmellClinic.exe

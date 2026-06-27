@@ -29,11 +29,19 @@ status_backup_global = {"em_andamento": False, "mensagem": "", "progresso": 0}
 # Controle de rotinas em background para não duplicar no Flask
 BACKGROUND_TASKS_STARTED = False
 
+def get_base_dir():
+    """Retorna o diretório raiz real, compatível com PyInstaller e modo Dev"""
+    if getattr(sys, 'frozen', False):
+        # Se for o executável do PyInstaller, a raiz é a pasta onde o .exe está
+        return os.path.dirname(sys.executable)
+    else:
+        # Em modo de desenvolvimento, a raiz é a pasta anterior ao "app"
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
 def obter_ip_local():
     """Obtém o IP real da máquina na rede local para gerar links externos"""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        # Não precisa acessar a internet, apenas invoca a tabela de roteamento local
         s.connect(('10.255.255.255', 1))
         IP = s.getsockname()[0]
     except Exception:
@@ -42,16 +50,16 @@ def obter_ip_local():
         s.close()
     return IP
 
-def get_db_absoluto(root_path):
+def get_db_absoluto():
     """Conexão direta para ser usada pelas threads em background (evita erros de contexto do Flask)"""
-    db_path = os.path.join(root_path, '..', 'smell_clinic_spa.db')
+    db_path = os.path.join(get_base_dir(), 'smell_clinic_spa.db')
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
-def garantir_colunas_notificacao(root_path):
+def garantir_colunas_notificacao():
     """Garante que as colunas de controle de notificação existam no banco de dados"""
-    conn = get_db_absoluto(root_path)
+    conn = get_db_absoluto()
     try:
         conn.execute("ALTER TABLE agendamentos ADD COLUMN lembrete_48h_enviado INTEGER DEFAULT 0")
     except sqlite3.OperationalError: pass
@@ -64,20 +72,16 @@ def garantir_colunas_notificacao(root_path):
     conn.commit()
     conn.close()
 
-def processar_notificacoes_inteligentes(root_path):
+def processar_notificacoes_inteligentes():
     """Lógica principal de envio de lembretes e avaliações"""
-    conn = get_db_absoluto(root_path)
+    conn = get_db_absoluto()
     try:
         agora = datetime.datetime.now()
         
-        # Pega horários de funcionamento
         config = conn.execute("SELECT hora_abertura, hora_fechamento FROM configuracoes_clinica LIMIT 1").fetchone()
         abertura = int(config['hora_abertura']) if config and config['hora_abertura'] else 8
         fechamento = int(config['hora_fechamento']) if config and config['hora_fechamento'] else 20
         
-        # ==========================================================
-        # 1 e 2: LEMBRETES DE AGENDAMENTOS FUTUROS (48h e 2h)
-        # ==========================================================
         agendamentos_futuros = conn.execute("""
             SELECT a.id, a.data_hora_inicio, a.lembrete_48h_enviado, a.lembrete_2h_enviado, 
                    c.nome, c.telefone 
@@ -90,7 +94,6 @@ def processar_notificacoes_inteligentes(root_path):
             try:
                 dt_inicio = datetime.datetime.strptime(ag['data_hora_inicio'], "%Y-%m-%d %H:%M:%S")
                 
-                # Regra 1: Lembrete 48h (Enviado às 10h da manhã)
                 if ag['lembrete_48h_enviado'] == 0:
                     diferenca_dias = (dt_inicio.date() - agora.date()).days
                     if diferenca_dias == 2 and agora.hour >= 10:
@@ -98,15 +101,12 @@ def processar_notificacoes_inteligentes(root_path):
                         conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (ag['telefone'], msg_48h))
                         conn.execute("UPDATE agendamentos SET lembrete_48h_enviado = 1 WHERE id = ?", (ag['id'],))
                         
-                # Regra 2: Lembrete 2h (ou fechamento do dia anterior)
                 if ag['lembrete_2h_enviado'] == 0:
                     hora_agendamento = dt_inicio.hour
                     
                     if (hora_agendamento - 2) <= abertura:
-                        # Se for <= abertura, envia 1h antes de fechar no dia anterior
                         dt_alvo = datetime.datetime(dt_inicio.year, dt_inicio.month, dt_inicio.day, fechamento - 1, 0, 0) - datetime.timedelta(days=1)
                     else:
-                        # Padrão: 2 horas antes no mesmo dia
                         dt_alvo = dt_inicio - datetime.timedelta(hours=2)
                         
                     if agora >= dt_alvo:
@@ -116,9 +116,6 @@ def processar_notificacoes_inteligentes(root_path):
             except Exception as e:
                 print(f"Erro ao processar lembrete para ID {ag['id']}: {e}")
 
-        # ==========================================================
-        # 3. AVALIAÇÃO PÓS-ATENDIMENTO (Dia Seguinte)
-        # ==========================================================
         ontem = agora.date() - datetime.timedelta(days=1)
         concluidos_ontem = conn.execute("""
             SELECT a.id, a.cliente_id, a.data_hora_inicio, c.nome, c.telefone 
@@ -129,23 +126,19 @@ def processar_notificacoes_inteligentes(root_path):
             AND date(a.data_hora_inicio) = ?
         """, (ontem.strftime('%Y-%m-%d'),)).fetchall()
         
-        # Substitua este link curto caso você crie o seu no bit.ly
         link_avaliacao = "https://bit.ly/4gc6M3D" 
         
         for ag in concluidos_ontem:
-            # Verifica se o cliente tem mais agendamentos futuros (Trata a regra do Combo/Sessão)
             futuros = conn.execute("""
                 SELECT COUNT(id) as total 
                 FROM agendamentos 
                 WHERE cliente_id = ? AND data_hora_inicio > ? AND status != 'Cancelado'
             """, (ag['cliente_id'], ag['data_hora_inicio'])).fetchone()
             
-            # Se for 0, significa que foi o último ou único atendimento
             if futuros['total'] == 0:
                 msg_aval = f"Olá, {ag['nome']}! Agradecemos por escolher a Smell CLINIC | SPA. Sua opinião é muito importante para nós! Poderia avaliar nosso atendimento e deixar um comentário? É rapidinho:\n{link_avaliacao}"
                 conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (ag['telefone'], msg_aval))
                 
-            # De qualquer forma, marca a flag como enviada para não processar este ID amanhã novamente
             conn.execute("UPDATE agendamentos SET avaliacao_enviada = 1 WHERE id = ?", (ag['id'],))
             
         conn.commit()
@@ -154,11 +147,11 @@ def processar_notificacoes_inteligentes(root_path):
     finally:
         conn.close()
 
-def loop_notificacoes_background(root_path):
+def loop_notificacoes_background():
     """Loop infinito que roda em paralelo ao Flask sem travá-lo"""
     while True:
-        processar_notificacoes_inteligentes(root_path)
-        time.sleep(60) # Verifica as regras a cada 1 minuto
+        processar_notificacoes_inteligentes()
+        time.sleep(60) 
 
 @main_bp.before_app_request
 def iniciar_motores_background():
@@ -166,15 +159,13 @@ def iniciar_motores_background():
     global BACKGROUND_TASKS_STARTED
     if not BACKGROUND_TASKS_STARTED:
         BACKGROUND_TASKS_STARTED = True
-        root_path = current_app.root_path
-        garantir_colunas_notificacao(root_path)
+        garantir_colunas_notificacao()
         
-        # Cria a thread invisível de notificações
-        thread_notif = threading.Thread(target=loop_notificacoes_background, args=(root_path,), daemon=True)
+        thread_notif = threading.Thread(target=loop_notificacoes_background, daemon=True)
         thread_notif.start()
         print("[SISTEMA] Motor Inteligente de Lembretes e Avaliações Iniciado com Sucesso.")
 
-def rotina_de_backup_fantasma(pasta_destino, root_path):
+def rotina_de_backup_fantasma(pasta_destino):
     global status_backup_global
     status_backup_global["em_andamento"] = True
     status_backup_global["mensagem"] = "Iniciando cópia de segurança..."
@@ -189,17 +180,18 @@ def rotina_de_backup_fantasma(pasta_destino, root_path):
         status_backup_global["mensagem"] = "Salvando banco de dados..."
         time.sleep(1) 
         
-        db_path = os.path.join(root_path, '..', 'smell_clinic_spa.db')
+        base_dir = get_base_dir()
+        db_path = os.path.join(base_dir, 'smell_clinic_spa.db')
         if os.path.exists(db_path):
             shutil.copy2(db_path, pasta_backup_final)
             
-        db_estoque_path = os.path.join(root_path, '..', 'smell_estoque.db')
+        db_estoque_path = os.path.join(base_dir, 'smell_estoque.db')
         if os.path.exists(db_estoque_path):
             shutil.copy2(db_estoque_path, pasta_backup_final)
 
         status_backup_global["progresso"] = 60
         status_backup_global["mensagem"] = "Salvando evoluções e fotos..."
-        fotos_path = os.path.join(root_path, '..', 'smell_fotos')
+        fotos_path = os.path.join(base_dir, 'smell_fotos')
         if os.path.exists(fotos_path):
             shutil.copytree(fotos_path, os.path.join(pasta_backup_final, 'smell_fotos'))
 
@@ -218,8 +210,7 @@ def rotina_de_backup_fantasma(pasta_destino, root_path):
             backup_antigo = backups_existentes.pop(0)
             shutil.rmtree(backup_antigo)
 
-        db_absoluto = os.path.join(root_path, '..', 'smell_clinic_spa.db')
-        conn = sqlite3.connect(db_absoluto)
+        conn = sqlite3.connect(db_path)
         hoje = datetime.datetime.now().strftime("%Y-%m-%d")
         conn.execute("UPDATE configuracoes_clinica SET ultimo_backup_data = ? WHERE id = 1", (hoje,))
         conn.commit()
@@ -295,7 +286,7 @@ def iniciar_backup_fantasma():
     conn.close()
     
     if config and config['pasta_backup'] and os.path.exists(config['pasta_backup']):
-        thread = threading.Thread(target=rotina_de_backup_fantasma, args=(config['pasta_backup'], current_app.root_path))
+        thread = threading.Thread(target=rotina_de_backup_fantasma, args=(config['pasta_backup'],))
         thread.start()
         return jsonify({"status": "iniciado"})
         
@@ -392,7 +383,7 @@ def prontuario(cliente_id):
 
 @main_bp.route('/fotos/<path:filename>', endpoint='serve_fotos')
 def serve_fotos(filename):
-    fotos_dir = os.path.abspath(os.path.join(current_app.root_path, '..', 'smell_fotos'))
+    fotos_dir = os.path.abspath(os.path.join(get_base_dir(), 'smell_fotos'))
     return send_from_directory(fotos_dir, filename)
 
 @main_bp.route('/api/evolucao/foto', methods=['POST'])
@@ -429,8 +420,10 @@ def salvar_foto():
     cpf_limpo = re.sub(r'\D', '', cliente['cpf'])
     nome_limpo = re.sub(r'[\\/*?:"<>|]', '', cliente['nome'].strip()).replace(' ', '_')
     nome_pasta = f"{cpf_limpo}_{nome_limpo}"
-    fotos_dir = os.path.abspath(os.path.join(current_app.root_path, '..', 'smell_fotos', nome_pasta))
+    
+    fotos_dir = os.path.abspath(os.path.join(get_base_dir(), 'smell_fotos', nome_pasta))
     os.makedirs(fotos_dir, exist_ok=True)
+    
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     ext = foto.filename.split('.')[-1] if '.' in foto.filename else 'jpg'
     filename = f"evolucao_{timestamp}.{ext}"
@@ -453,7 +446,7 @@ def excluir_foto():
     conn = get_db_connection()
     foto = conn.execute("SELECT * FROM evolucao_fotos WHERE id = ?", (foto_id,)).fetchone()
     if foto:
-        fotos_dir = os.path.abspath(os.path.join(current_app.root_path, '..', 'smell_fotos'))
+        fotos_dir = os.path.abspath(os.path.join(get_base_dir(), 'smell_fotos'))
         caminho_completo = os.path.join(fotos_dir, foto['caminho_arquivo'].replace('/', os.sep))
         if os.path.exists(caminho_completo):
             try: os.remove(caminho_completo)
@@ -662,9 +655,6 @@ def totem_pes(cliente_id):
 def totem_sucesso():
     return render_template('totem_sucesso.html', modo_cliente=True)
 
-# ==============================================================
-# NOVA ROTA DO TÚNEL REMOTO DE PREENCHIMENTO DE ANAMNESE
-# ==============================================================
 @main_bp.route('/remoto/token/<token>', endpoint='acesso_remoto')
 def acesso_remoto(token):
     conn = get_db_connection()
@@ -687,7 +677,6 @@ def acesso_remoto(token):
     cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (registro['cliente_id'],)).fetchone()
     conn.close()
 
-    # Menu de seleção direto do link do WhatsApp
     return render_template_string("""
         <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Ficha de Anamnese</title>
         <style>
@@ -716,17 +705,15 @@ def salvar_anamnese():
     dados_json = request.form.get('dados_json')
     termo_assinado = request.form.get('termo_assinado')
     
-    # As três assinaturas agora são recebidas
     assinatura_cliente = request.form.get('assinatura_cliente_base64')
     assinatura_profissional = request.form.get('assinatura_profissional_base64')
     assinatura_testemunha = request.form.get('assinatura_testemunha_base64')
     
     data_retroativa = request.form.get('data_retroativa')
-    token = request.form.get('token') # Usado no túnel remoto
+    token = request.form.get('token') 
     
     conn = get_db_connection()
     
-    # Valida no banco se o token já foi utilizado antes de inserir (TRAVA CONTRA BOTÃO VOLTAR)
     if token:
         agora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         try:
@@ -735,11 +722,9 @@ def salvar_anamnese():
                 conn.close()
                 return jsonify({"mensagem": "ERRO: O link utilizado expirou ou a ficha já foi enviada ao servidor.", "erro": True})
                 
-            # Destrói imediatamente o token mudando a data para o ano 2000
             conn.execute("UPDATE anamneses_termos SET data_expiracao_token = '2000-01-01 00:00:00' WHERE token_temporario = ?", (token,))
         except sqlite3.OperationalError: pass
     
-    # Garante que as novas colunas existam no banco sem precisar apagar a tabela antiga
     try:
         conn.execute("ALTER TABLE anamneses ADD COLUMN assinatura_profissional_base64 TEXT")
     except sqlite3.OperationalError: pass
@@ -948,7 +933,6 @@ def novo_agendamento():
             VALUES (?, ?, ?, ?, ?, 'Agendado')
         """, (cliente['id'], profissional_id, servico_id, dt_str, data_hora_fim))
         
-        # Gera o Token de Anamnese Remoto logo no momento de agendar
         token = secrets.token_urlsafe(16)
         expiracao = (datetime.datetime.now() + datetime.timedelta(minutes=60)).strftime("%Y-%m-%d %H:%M:%S")
         try:
@@ -960,7 +944,6 @@ def novo_agendamento():
         link_remoto = f"http://{obter_ip_local()}:5000/remoto/token/{token}"
         msg_agenda = f"Olá, {cliente['nome']}! Seu agendamento de {nome_procedimento} foi confirmado para o dia {inicio_dt.strftime('%d/%m/%Y')} às {inicio_dt.strftime('%H:%M')} na Smell CLINIC | SPA.\n\nPara adiantar seu atendimento, por favor, preencha sua ficha de anamnese clicando neste link (válido por 60 min):\n{link_remoto}"
         
-        # INSERÇÃO RIGOROSA COM STATUS 'Pendente' PARA O BOT IDENTIFICAR
         conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (cliente['telefone'], msg_agenda))
         
     conn.commit()
@@ -985,7 +968,6 @@ def atualizar_agendamento():
                 pagamento_final = forma_pagamento if forma_pagamento else 'Pix'
                 conn.execute("INSERT INTO fluxo_caixa (agendamento_id, tipo, valor, forma_pagamento, observacoes) VALUES (?, 'Entrada', ?, ?, ?)", (ag_id, agendamento['preco_padrao'], pagamento_final, f"Pagamento - Serviço: {agendamento['nome']}"))
 
-    # LÓGICA DO TÚNEL DE ACESSO REMOTO PARA O CLIENTE
     if enviar_link or novo_status == 'Aguardando':
         ag = conn.execute("SELECT a.*, c.nome as cliente_nome, c.telefone FROM agendamentos a JOIN clientes c ON a.cliente_id = c.id WHERE a.id = ?", (ag_id,)).fetchone()
         if ag:
@@ -1269,18 +1251,29 @@ def iniciar_motor_whatsapp():
     global bot_process
     
     if bot_process is None or bot_process.poll() is not None:
-        qr_path = os.path.join(current_app.root_path, '..', 'qr_code.png')
+        base_dir = get_base_dir()
+        qr_path = os.path.join(base_dir, 'qr_code.png')
         if os.path.exists(qr_path):
             os.remove(qr_path)
             
-        cwd = os.path.abspath(os.path.join(current_app.root_path, '..'))
-        
-        if sys.platform == 'win32':
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            bot_process = subprocess.Popen('node bot.js', cwd=cwd, shell=True, startupinfo=startupinfo)
+        if getattr(sys, 'frozen', False):
+            # NO EXECUTÁVEL: Roda o bot.exe que criamos na pasta final
+            caminho_bot = os.path.join(base_dir, 'bot.exe')
+            if sys.platform == 'win32':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                bot_process = subprocess.Popen([caminho_bot], cwd=base_dir, startupinfo=startupinfo)
+            else:
+                bot_process = subprocess.Popen([caminho_bot], cwd=base_dir)
         else:
-            bot_process = subprocess.Popen('node bot.js', cwd=cwd, shell=True)
+            # NO AMBIENTE DE DEV (no seu PC): Roda pelo node normalmente
+            caminho_bot = os.path.join(base_dir, 'bot.js')
+            if sys.platform == 'win32':
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                bot_process = subprocess.Popen(['node', caminho_bot], cwd=base_dir, shell=True, startupinfo=startupinfo)
+            else:
+                bot_process = subprocess.Popen(['node', caminho_bot], cwd=base_dir, shell=True)
             
         return jsonify({"status": "sucesso", "mensagem": "Motor do WhatsApp iniciado em background."})
     else:
@@ -1288,15 +1281,18 @@ def iniciar_motor_whatsapp():
 
 @main_bp.route('/whatsapp/status', methods=['GET'])
 def whatsapp_status():
-    status_path = os.path.join(current_app.root_path, '..', 'whatsapp_status.txt')
+    # Agora aponta de forma infalível para a pasta de entrega correta
+    status_path = os.path.join(get_base_dir(), 'whatsapp_status.txt')
     if os.path.exists(status_path):
-        with open(status_path, 'r') as f: return jsonify({"conectado": f.read().strip() == 'CONECTADO', "status_texto": f.read().strip()})
+        with open(status_path, 'r') as f: 
+            conteudo = f.read().strip()
+            return jsonify({"conectado": conteudo == 'CONECTADO', "status_texto": conteudo})
     return jsonify({"conectado": False, "status_texto": "DESLIGADO"})
 
 @main_bp.route('/whatsapp/qr', methods=['GET'])
 def whatsapp_qr():
     import base64
-    qr_path = os.path.join(current_app.root_path, '..', 'qr_code.png')
+    qr_path = os.path.join(get_base_dir(), 'qr_code.png')
     if os.path.exists(qr_path):
         with open(qr_path, "rb") as image_file: return jsonify({"status": "sucesso", "qr_data": f"data:image/png;base64,{base64.b64encode(image_file.read()).decode('utf-8')}"})
     return jsonify({"status": "aguardando", "mensagem": "Aguardando o motor Node.js..."})
@@ -1316,8 +1312,11 @@ def selecionar_pasta():
 def executar_backup():
     pasta_destino = request.form.get('pasta_destino')
     if not pasta_destino or not os.path.exists(pasta_destino): return jsonify({"mensagem": "Erro: A pasta destino selecionada não existe."})
-    db_path = os.path.join(current_app.root_path, '..', 'smell_clinic_spa.db')
-    fotos_path = os.path.join(current_app.root_path, '..', 'smell_fotos')
+    
+    base_dir = get_base_dir()
+    db_path = os.path.join(base_dir, 'smell_clinic_spa.db')
+    fotos_path = os.path.join(base_dir, 'smell_fotos')
+    
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     pasta_backup_final = os.path.join(pasta_destino, f"Backup_Smell_{timestamp}")
     try:

@@ -4,7 +4,9 @@ const QRCode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 
-const dbPath = path.join(__dirname, 'smell_clinic_spa.db');
+// Verifica se está rodando como .exe (pkg) ou como script normal
+const pastaReal = process.pkg ? path.dirname(process.execPath) : __dirname;
+const dbPath = path.join(pastaReal, 'smell_clinic_spa.db');
 const db = new sqlite3.Database(dbPath);
 
 console.log('==========================================================================');
