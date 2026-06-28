@@ -35,32 +35,38 @@
                 <span class="font-clinic-subtitle">CLINIC | SPA</span>
             </div>
             
- <ul class="sidebar-menu">
-    <li class="{% if request.endpoint == 'main.agenda' %}active{% endif %}">
-        <a href="{{ url_for('main.agenda') }}"><i class="fa-solid fa-calendar-days" style="margin-right: 12px;"></i> Agenda</a>
-    </li>
-    <li class="{% if request.endpoint == 'main.clientes' %}active{% endif %}">
-        <a href="{{ url_for('main.clientes') }}"><i class="fa-solid fa-user-group" style="margin-right: 12px;"></i> Clientes</a>
-    </li>
-    <li class="{% if request.endpoint == 'main.servicos' %}active{% endif %}">
-        <a href="{{ url_for('main.servicos') }}"><i class="fa-solid fa-spa" style="margin-right: 12px;"></i> Serviços</a>
-    </li>
-    <li class="{% if request.endpoint == 'main.estoque' %}active{% endif %}">
-        <a href="{{ url_for('main.estoque') }}"><i class="fa-solid fa-boxes-stacked" style="margin-right: 12px;"></i> Estoque</a>
-    </li>
-    <li class="{% if request.endpoint == 'main.financeiro' %}active{% endif %}">
-        <a href="{{ url_for('main.financeiro') }}"><i class="fa-solid fa-wallet" style="margin-right: 12px;"></i> Financeiro</a>
-    </li>
-    <li class="{% if request.endpoint == 'main.relatorios' %}active{% endif %}">
-        <a href="{{ url_for('main.relatorios') }}"><i class="fa-solid fa-chart-pie" style="margin-right: 12px;"></i> Relatórios</a>
-    </li>
-    <li class="{% if request.endpoint == 'main.configuracoes' %}active{% endif %}">
-        <a href="{{ url_for('main.configuracoes') }}">
-            <i class="fa-solid fa-gear" style="margin-right: 12px;"></i> Configurações
-            <span id="whatsapp-indicator" class="whatsapp-status-indicator disconnected"></span>
-        </a>
-    </li>
-</ul>
+            <ul class="sidebar-menu">
+                <li class="{% if request.endpoint == 'main.agenda' %}active{% endif %}">
+                    <a href="{{ url_for('main.agenda') }}"><i class="fa-solid fa-calendar-days" style="margin-right: 12px;"></i> Agenda</a>
+                </li>
+                <li class="{% if request.endpoint == 'main.pdv_vitrine' %}active{% endif %}">
+                    <a href="{{ url_for('main.pdv_vitrine') }}"><i class="fa-solid fa-store" style="margin-right: 12px;"></i> Vitrine / PDV</a>
+                </li>
+                <li class="{% if request.endpoint == 'main.clientes' %}active{% endif %}">
+                    <a href="{{ url_for('main.clientes') }}"><i class="fa-solid fa-user-group" style="margin-right: 12px;"></i> Clientes</a>
+                </li>
+                <li class="{% if request.endpoint == 'main.servicos' %}active{% endif %}">
+                    <a href="{{ url_for('main.servicos') }}"><i class="fa-solid fa-spa" style="margin-right: 12px;"></i> Serviços</a>
+                </li>
+                <li class="{% if request.endpoint == 'main.estoque' %}active{% endif %}">
+                    <a href="{{ url_for('main.estoque') }}"><i class="fa-solid fa-boxes-stacked" style="margin-right: 12px;"></i> Estoque</a>
+                </li>
+                <li class="{% if request.endpoint == 'main.gestao_financeira' %}active{% endif %}">
+                    <a href="{{ url_for('main.gestao_financeira') }}"><i class="fa-solid fa-scale-balanced" style="margin-right: 12px;"></i> Gestão Financeira</a>
+                </li>
+                <li class="{% if request.endpoint == 'main.financeiro' %}active{% endif %}">
+                    <a href="{{ url_for('main.financeiro') }}"><i class="fa-solid fa-wallet" style="margin-right: 12px;"></i> Caixa Diário</a>
+                </li>
+                <li class="{% if request.endpoint == 'main.relatorios' %}active{% endif %}">
+                    <a href="{{ url_for('main.relatorios') }}"><i class="fa-solid fa-chart-pie" style="margin-right: 12px;"></i> Relatórios</a>
+                </li>
+                <li class="{% if request.endpoint == 'main.configuracoes' %}active{% endif %}">
+                    <a href="{{ url_for('main.configuracoes') }}">
+                        <i class="fa-solid fa-gear" style="margin-right: 12px;"></i> Configurações
+                        <span id="whatsapp-indicator" class="whatsapp-status-indicator disconnected"></span>
+                    </a>
+                </li>
+            </ul>
         </aside>
     {% endif %}
 
@@ -150,9 +156,6 @@
         setInterval(checarStatusWhatsapp, 5000);
         window.addEventListener('load', checarStatusWhatsapp);
 
-        // =========================================================
-        // MOTOR DE BACKUP FANTASMA
-        // =========================================================
         let loopProgresso;
 
         function iniciarLeituraDeProgresso() {
@@ -177,7 +180,6 @@
             .then(res => res.json())
             .then(data => {
                 if(!data.pasta_configurada) {
-                    // Força display flex com as regras blindadas inline
                     document.getElementById('setupBackupModal').style.display = 'flex';
                 } else if(data.precisa_backup) {
                     fetch('/api/backup/iniciar-fantasma', { method: 'POST' })

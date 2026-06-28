@@ -66,6 +66,9 @@ def init_db():
             status IN ('Agendado', 'Confirmado', 'Presente', 'Em Atendimento', 'Concluído', 'Cancelado', 'Atrasado')
         ),
         observacoes TEXT,
+        lembrete_48h_enviado INTEGER DEFAULT 0,
+        lembrete_2h_enviado INTEGER DEFAULT 0,
+        avaliacao_enviada INTEGER DEFAULT 0,
         FOREIGN KEY (cliente_id) REFERENCES clientes (id),
         FOREIGN KEY (profissional_id) REFERENCES profissionais (id),
         FOREIGN KEY (servico_id) REFERENCES servicos (id)
@@ -81,6 +84,8 @@ def init_db():
         dados_json TEXT NOT NULL,
         termo_assinado TEXT NOT NULL,
         assinatura_base64 TEXT NOT NULL,
+        assinatura_profissional_base64 TEXT,
+        assinatura_testemunha_base64 TEXT,
         data_preenchimento TEXT DEFAULT (datetime('now', 'localtime')),
         FOREIGN KEY (cliente_id) REFERENCES clientes (id)
     );
@@ -118,7 +123,7 @@ def init_db():
         agendamento_id INTEGER,
         tipo TEXT NOT NULL CHECK (tipo IN ('Entrada', 'Saída')),
         valor REAL NOT NULL,
-        forma_pagamento TEXT CHECK (forma_pagamento IN ('Pix', 'Cartão de Crédito', 'Cartão de Débito', 'Dinheiro')),
+        forma_pagamento TEXT CHECK (forma_pagamento IN ('Pix', 'Cartão de Crédito', 'Cartão de Débito', 'Dinheiro', 'Transferência Bancária')),
         data_hora_lancamento TEXT DEFAULT (datetime('now', 'localtime')),
         observacoes TEXT,
         FOREIGN KEY (agendamento_id) REFERENCES agendamentos (id)
@@ -144,7 +149,69 @@ def init_db():
         ultimo_backup_data TEXT
     );
     """)
-    
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS pacotes_combos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT,
+        tipo TEXT,
+        servicos_ids TEXT,
+        observacoes TEXT,
+        valor_base REAL,
+        porcentagem_desconto REAL,
+        valor_final REAL,
+        ativo INTEGER DEFAULT 1
+    );
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS anamneses_termos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        cliente_id INTEGER, 
+        token_temporario TEXT, 
+        data_expiracao_token TEXT, 
+        origem_preenchimento TEXT
+    );
+    ''')
+
+    # NOVAS TABELAS: VITRINE/PDV E GESTÃO FINANCEIRA
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS vendas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cliente_id INTEGER,
+        vendedor_id INTEGER,
+        valor_total REAL NOT NULL,
+        forma_pagamento TEXT,
+        data_hora TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS vendas_itens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        venda_id INTEGER NOT NULL,
+        produto_codigo INTEGER NOT NULL,
+        descricao TEXT NOT NULL,
+        quantidade INTEGER NOT NULL,
+        valor_unitario REAL NOT NULL,
+        total_item REAL NOT NULL,
+        FOREIGN KEY (venda_id) REFERENCES vendas (id)
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS contas_pagar_receber (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tipo TEXT NOT NULL CHECK (tipo IN ('Pagar', 'Receber')),
+        descricao TEXT NOT NULL,
+        valor REAL NOT NULL,
+        data_vencimento TEXT NOT NULL,
+        data_pagamento TEXT,
+        status TEXT DEFAULT 'Pendente' CHECK (status IN ('Pendente', 'Pago', 'Recebido')),
+        forma_pagamento TEXT
+    );
+    """)
+
     try:
         cursor.execute("ALTER TABLE configuracoes_clinica ADD COLUMN pasta_backup TEXT;")
     except sqlite3.OperationalError:

@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, current_app, send_from_directory, send_file, render_template_string
+from flask import Blueprint, render_template, request, jsonify, current_app, send_from_directory, send_file, render_template_string, redirect, url_for
 from app.database import get_db_connection
 from app.estoque_database import get_estoque_db_connection
 import os
@@ -20,26 +20,17 @@ import socket
 
 main_bp = Blueprint('main', __name__)
 
-# Variável para rastrear o processo do bot do WhatsApp
 bot_process = None
-
-# Variável global para rastrear a barra de progresso do backup
 status_backup_global = {"em_andamento": False, "mensagem": "", "progresso": 0}
-
-# Controle de rotinas em background para não duplicar no Flask
 BACKGROUND_TASKS_STARTED = False
 
 def get_base_dir():
-    """Retorna o diretório raiz real, compatível com PyInstaller e modo Dev"""
     if getattr(sys, 'frozen', False):
-        # Se for o executável do PyInstaller, a raiz é a pasta onde o .exe está
         return os.path.dirname(sys.executable)
     else:
-        # Em modo de desenvolvimento, a raiz é a pasta anterior ao "app"
         return os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 def obter_ip_local():
-    """Obtém o IP real da máquina na rede local para gerar links externos"""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(('10.255.255.255', 1))
@@ -51,14 +42,12 @@ def obter_ip_local():
     return IP
 
 def get_db_absoluto():
-    """Conexão direta para ser usada pelas threads em background (evita erros de contexto do Flask)"""
     db_path = os.path.join(get_base_dir(), 'smell_clinic_spa.db')
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
 def garantir_colunas_notificacao():
-    """Garante que as colunas de controle de notificação existam no banco de dados"""
     conn = get_db_absoluto()
     try:
         conn.execute("ALTER TABLE agendamentos ADD COLUMN lembrete_48h_enviado INTEGER DEFAULT 0")
@@ -73,11 +62,9 @@ def garantir_colunas_notificacao():
     conn.close()
 
 def processar_notificacoes_inteligentes():
-    """Lógica principal de envio de lembretes e avaliações"""
     conn = get_db_absoluto()
     try:
         agora = datetime.datetime.now()
-        
         config = conn.execute("SELECT hora_abertura, hora_fechamento FROM configuracoes_clinica LIMIT 1").fetchone()
         abertura = int(config['hora_abertura']) if config and config['hora_abertura'] else 8
         fechamento = int(config['hora_fechamento']) if config and config['hora_fechamento'] else 20
@@ -114,7 +101,7 @@ def processar_notificacoes_inteligentes():
                         conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (ag['telefone'], msg_2h))
                         conn.execute("UPDATE agendamentos SET lembrete_2h_enviado = 1 WHERE id = ?", (ag['id'],))
             except Exception as e:
-                print(f"Erro ao processar lembrete para ID {ag['id']}: {e}")
+                pass
 
         ontem = agora.date() - datetime.timedelta(days=1)
         concluidos_ontem = conn.execute("""
@@ -143,27 +130,23 @@ def processar_notificacoes_inteligentes():
             
         conn.commit()
     except Exception as e:
-        print(f"Erro no motor inteligente de notificações: {e}")
+        pass
     finally:
         conn.close()
 
 def loop_notificacoes_background():
-    """Loop infinito que roda em paralelo ao Flask sem travá-lo"""
     while True:
         processar_notificacoes_inteligentes()
         time.sleep(60) 
 
 @main_bp.before_app_request
 def iniciar_motores_background():
-    """Inicia a thread inteligente no momento que a aplicação recebe a primeira requisição"""
     global BACKGROUND_TASKS_STARTED
     if not BACKGROUND_TASKS_STARTED:
         BACKGROUND_TASKS_STARTED = True
         garantir_colunas_notificacao()
-        
         thread_notif = threading.Thread(target=loop_notificacoes_background, daemon=True)
         thread_notif.start()
-        print("[SISTEMA] Motor Inteligente de Lembretes e Avaliações Iniciado com Sucesso.")
 
 def rotina_de_backup_fantasma(pasta_destino):
     global status_backup_global
@@ -384,6 +367,11 @@ def prontuario(cliente_id):
 @main_bp.route('/fotos/<path:filename>', endpoint='serve_fotos')
 def serve_fotos(filename):
     fotos_dir = os.path.abspath(os.path.join(get_base_dir(), 'smell_fotos'))
+    return send_from_directory(fotos_dir, filename)
+
+@main_bp.route('/fotos_produtos/<path:filename>', endpoint='serve_fotos_produtos')
+def serve_fotos_produtos(filename):
+    fotos_dir = os.path.abspath(os.path.join(get_base_dir(), 'fotos_produtos'))
     return send_from_directory(fotos_dir, filename)
 
 @main_bp.route('/api/evolucao/foto', methods=['POST'])
@@ -942,9 +930,11 @@ def novo_agendamento():
             conn.execute("INSERT INTO anamneses_termos (cliente_id, token_temporario, data_expiracao_token, origem_preenchimento) VALUES (?, ?, ?, 'Link Remoto')", (cliente['id'], token, expiracao))
 
         link_remoto = f"http://{obter_ip_local()}:5000/remoto/token/{token}"
-        msg_agenda = f"Olá, {cliente['nome']}! Seu agendamento de {nome_procedimento} foi confirmado para o dia {inicio_dt.strftime('%d/%m/%Y')} às {inicio_dt.strftime('%H:%M')} na Smell CLINIC | SPA.\n\nPara adiantar seu atendimento, por favor, preencha sua ficha de anamnese clicando neste link (válido por 60 min):\n{link_remoto}"
+        msg_agenda_1 = f"Olá, {cliente['nome']}! Seu agendamento de {nome_procedimento} foi confirmado para o dia {inicio_dt.strftime('%d/%m/%Y')} às {inicio_dt.strftime('%H:%M')} na Smell CLINIC | SPA.\n\nPara adiantar seu atendimento, por favor, preencha sua ficha de anamnese clicando neste link (válido por 60 min):"
+        msg_agenda_2 = link_remoto
         
-        conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (cliente['telefone'], msg_agenda))
+        conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (cliente['telefone'], msg_agenda_1))
+        conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (cliente['telefone'], msg_agenda_2))
         
     conn.commit()
     conn.close()
@@ -980,8 +970,10 @@ def atualizar_agendamento():
                 conn.execute("INSERT INTO anamneses_termos (cliente_id, token_temporario, data_expiracao_token, origem_preenchimento) VALUES (?, ?, ?, 'Link Remoto')", (ag['cliente_id'], token, expiracao))
 
             link_remoto = f"http://{obter_ip_local()}:5000/remoto/token/{token}"
-            msg = f"Olá, {ag['cliente_nome']}! Você já está aguardando seu atendimento. Por favor, preencha sua ficha de anamnese clicando no link a seguir (válido por 60 min):\n{link_remoto}"
-            conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (ag['telefone'], msg))
+            msg_1 = f"Olá, {ag['cliente_nome']}! Você já está aguardando seu atendimento. Por favor, preencha sua ficha de anamnese clicando no link a seguir (válido por 60 min):"
+            msg_2 = link_remoto
+            conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (ag['telefone'], msg_1))
+            conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (ag['telefone'], msg_2))
 
     conn.execute("UPDATE agendamentos SET status = ? WHERE id = ?", (novo_status, ag_id))
     conn.commit()
@@ -1116,7 +1108,6 @@ def novo_pacote():
         return jsonify({"mensagem": "Pacote Estratégico cadastrado com sucesso! Disponível para agendamentos.", "erro": False})
     except Exception as e:
         return jsonify({"mensagem": f"Erro interno ao salvar pacote: {str(e)}", "erro": True})
-
 
 @main_bp.route('/profissional/novo', methods=['POST'])
 def novo_profissional():
@@ -1256,24 +1247,15 @@ def iniciar_motor_whatsapp():
         if os.path.exists(qr_path):
             os.remove(qr_path)
             
-        if getattr(sys, 'frozen', False):
-            # NO EXECUTÁVEL: Roda o bot.exe que criamos na pasta final
-            caminho_bot = os.path.join(base_dir, 'bot.exe')
-            if sys.platform == 'win32':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                bot_process = subprocess.Popen([caminho_bot], cwd=base_dir, startupinfo=startupinfo)
-            else:
-                bot_process = subprocess.Popen([caminho_bot], cwd=base_dir)
+        caminho_bot = os.path.join(base_dir, 'bot.js')
+        
+        if sys.platform == 'win32':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            CREATE_NO_WINDOW = 0x08000000
+            bot_process = subprocess.Popen(['node', caminho_bot], cwd=base_dir, shell=False, startupinfo=startupinfo, creationflags=CREATE_NO_WINDOW)
         else:
-            # NO AMBIENTE DE DEV (no seu PC): Roda pelo node normalmente
-            caminho_bot = os.path.join(base_dir, 'bot.js')
-            if sys.platform == 'win32':
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                bot_process = subprocess.Popen(['node', caminho_bot], cwd=base_dir, shell=True, startupinfo=startupinfo)
-            else:
-                bot_process = subprocess.Popen(['node', caminho_bot], cwd=base_dir, shell=True)
+            bot_process = subprocess.Popen(['node', caminho_bot], cwd=base_dir, shell=False)
             
         return jsonify({"status": "sucesso", "mensagem": "Motor do WhatsApp iniciado em background."})
     else:
@@ -1281,7 +1263,6 @@ def iniciar_motor_whatsapp():
 
 @main_bp.route('/whatsapp/status', methods=['GET'])
 def whatsapp_status():
-    # Agora aponta de forma infalível para a pasta de entrega correta
     status_path = os.path.join(get_base_dir(), 'whatsapp_status.txt')
     if os.path.exists(status_path):
         with open(status_path, 'r') as f: 
@@ -1348,6 +1329,7 @@ def novo_produto():
     categoria_nome = request.form.get('categoria', '').strip()
     valor_unitario = float(request.form.get('valor_unitario', 0.0))
     quantidade = int(request.form.get('quantidade', 0))
+    foto = request.files.get('foto')
 
     conn = get_estoque_db_connection()
     categoria = conn.execute("SELECT id FROM categorias WHERE nome = ?", (categoria_nome,)).fetchone()
@@ -1360,7 +1342,15 @@ def novo_produto():
 
     codigo = gerar_codigo_produto_unico()
 
-    conn.execute("INSERT INTO produtos (codigo, descricao, categoria_id, valor_unitario, quantidade, status) VALUES (?, ?, ?, ?, ?, 'Ativo')", (codigo, descricao, categoria_id, valor_unitario, quantidade))
+    foto_filename = None
+    if foto and foto.filename != '':
+        ext = foto.filename.split('.')[-1]
+        foto_filename = f"prod_{codigo}_{int(time.time())}.{ext}"
+        pasta_fotos = os.path.join(get_base_dir(), 'fotos_produtos')
+        os.makedirs(pasta_fotos, exist_ok=True)
+        foto.save(os.path.join(pasta_fotos, foto_filename))
+
+    conn.execute("INSERT INTO produtos (codigo, descricao, categoria_id, valor_unitario, quantidade, status, foto) VALUES (?, ?, ?, ?, ?, 'Ativo', ?)", (codigo, descricao, categoria_id, valor_unitario, quantidade, foto_filename))
     
     if quantidade > 0:
         conn.execute("INSERT INTO historico_estoque (produto_codigo, tipo, quantidade_movimentada, quantidade_saldo, observacoes) VALUES (?, 'Entrada', ?, ?, 'Cadastro Inicial')", (codigo, quantidade, quantidade))
@@ -1375,6 +1365,7 @@ def editar_produto():
     nova_descricao = request.form.get('descricao')
     nova_categoria_nome = request.form.get('categoria', '').strip()
     novo_valor = float(request.form.get('valor_unitario', 0.0))
+    foto = request.files.get('foto')
 
     conn = get_estoque_db_connection()
     prod_atual = conn.execute("SELECT descricao, valor_unitario, quantidade, categoria_id FROM produtos WHERE codigo = ?", (codigo,)).fetchone()
@@ -1397,11 +1388,26 @@ def editar_produto():
     if float(prod_atual['valor_unitario']) != float(novo_valor):
         observacoes_historico.append(f"Preço alterado: de R$ {prod_atual['valor_unitario']:.2f} para R$ {novo_valor:.2f}")
 
-    conn.execute("""
-        UPDATE produtos 
-        SET descricao = ?, categoria_id = ?, valor_unitario = ? 
-        WHERE codigo = ?
-    """, (nova_descricao, categoria_id, novo_valor, codigo))
+    foto_filename = None
+    if foto and foto.filename != '':
+        ext = foto.filename.split('.')[-1]
+        foto_filename = f"prod_{codigo}_{int(time.time())}.{ext}"
+        pasta_fotos = os.path.join(get_base_dir(), 'fotos_produtos')
+        os.makedirs(pasta_fotos, exist_ok=True)
+        foto.save(os.path.join(pasta_fotos, foto_filename))
+
+    if foto_filename:
+        conn.execute("""
+            UPDATE produtos 
+            SET descricao = ?, categoria_id = ?, valor_unitario = ?, foto = ? 
+            WHERE codigo = ?
+        """, (nova_descricao, categoria_id, novo_valor, foto_filename, codigo))
+    else:
+        conn.execute("""
+            UPDATE produtos 
+            SET descricao = ?, categoria_id = ?, valor_unitario = ? 
+            WHERE codigo = ?
+        """, (nova_descricao, categoria_id, novo_valor, codigo))
 
     if observacoes_historico:
         obs_final = " | ".join(observacoes_historico)
@@ -1549,3 +1555,175 @@ def relatorio_historico():
         
     conn.close()
     return jsonify(formatted_rows)
+
+# ==============================================================
+# NOVAS ROTAS - PDV / VITRINE E GESTÃO FINANCEIRA
+# ==============================================================
+
+@main_bp.route('/pdv', endpoint='pdv_vitrine')
+def pdv_vitrine():
+    conn_est = get_estoque_db_connection()
+    produtos = conn_est.execute("SELECT * FROM produtos WHERE status = 'Ativo' AND quantidade > 0 ORDER BY descricao ASC").fetchall()
+    conn_est.close()
+    
+    conn = get_db_connection()
+    clientes = conn.execute("SELECT id, nome FROM clientes ORDER BY nome ASC").fetchall()
+    profissionais = conn.execute("SELECT id, nome FROM profissionais WHERE status = 'Ativo' ORDER BY nome ASC").fetchall()
+    conn.close()
+    
+    return render_template('vitrine.html', produtos=produtos, clientes=clientes, profissionais=profissionais)
+
+@main_bp.route('/pdv/finalizar', methods=['POST'])
+def pdv_finalizar():
+    dados = request.get_json()
+    cliente_id = dados.get('cliente_id')
+    vendedor_id = dados.get('vendedor_id')
+    pagamento = dados.get('pagamento')
+    itens = dados.get('itens')
+    
+    if not itens:
+        return jsonify({"erro": True, "mensagem": "Carrinho vazio!"})
+        
+    valor_total = sum(float(item['valor']) * int(item['quantidade']) for item in itens)
+    
+    conn = get_db_connection()
+    conn_est = get_estoque_db_connection()
+    
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO vendas (cliente_id, vendedor_id, valor_total, forma_pagamento) VALUES (?, ?, ?, ?)", 
+                   (cliente_id if cliente_id != '0' else None, vendedor_id if vendedor_id != '0' else None, valor_total, pagamento))
+    venda_id = cursor.lastrowid
+    
+    for item in itens:
+        qtd = int(item['quantidade'])
+        vlr = float(item['valor'])
+        tot = qtd * vlr
+        
+        prod = conn_est.execute("SELECT quantidade FROM produtos WHERE codigo = ?", (item['codigo'],)).fetchone()
+        if prod:
+            nova_qtd = prod['quantidade'] - qtd
+            conn_est.execute("UPDATE produtos SET quantidade = ? WHERE codigo = ?", (nova_qtd, item['codigo']))
+            conn_est.execute("INSERT INTO historico_estoque (produto_codigo, tipo, quantidade_movimentada, quantidade_saldo, observacoes) VALUES (?, 'Venda', ?, ?, ?)", 
+                             (item['codigo'], qtd, nova_qtd, f"Venda PDV #{venda_id}"))
+        
+        conn.execute("INSERT INTO vendas_itens (venda_id, produto_codigo, descricao, quantidade, valor_unitario, total_item) VALUES (?, ?, ?, ?, ?, ?)",
+                     (venda_id, item['codigo'], item['descricao'], qtd, vlr, tot))
+                     
+    obs_caixa = f"Venda PDV #{venda_id} ({len(itens)} itens)"
+    conn.execute("INSERT INTO fluxo_caixa (tipo, valor, forma_pagamento, observacoes) VALUES ('Entrada', ?, ?, ?)", (valor_total, pagamento, obs_caixa))
+    
+    conn.commit()
+    conn.close()
+    conn_est.commit()
+    conn_est.close()
+    
+    return jsonify({"erro": False, "venda_id": venda_id})
+
+@main_bp.route('/pdv/imprimir/<int:venda_id>')
+def pdv_imprimir(venda_id):
+    conn = get_db_connection()
+    venda_row = conn.execute("""
+        SELECT v.*, 
+               c.nome as cliente_nome, 
+               p.nome as vendedor_nome 
+        FROM vendas v 
+        LEFT JOIN clientes c ON v.cliente_id = c.id 
+        LEFT JOIN profissionais p ON v.vendedor_id = p.id 
+        WHERE v.id = ?
+    """, (venda_id,)).fetchone()
+    
+    if not venda_row:
+        conn.close()
+        return "Venda não encontrada", 404
+        
+    venda = dict(venda_row)
+    venda['cliente_nome'] = venda['cliente_nome'] if venda['cliente_nome'] else "Não informado"
+    venda['vendedor_nome'] = venda['vendedor_nome'] if venda['vendedor_nome'] else "Não informado"
+    
+    dt_obj = datetime.datetime.strptime(venda['data_hora'], "%Y-%m-%d %H:%M:%S")
+    venda['data_fmt'] = dt_obj.strftime("%d/%m/%Y")
+    venda['hora_fmt'] = dt_obj.strftime("%H:%M:%S")
+    
+    itens = conn.execute("SELECT * FROM vendas_itens WHERE venda_id = ?", (venda_id,)).fetchall()
+    conn.close()
+    
+    return render_template('cupom_venda.html', venda=venda, itens=itens)
+
+@main_bp.route('/financeiro/contas', endpoint='gestao_financeira')
+def gestao_financeira():
+    conn = get_db_connection()
+    agora = datetime.datetime.now()
+    hoje_str = agora.strftime("%Y-%m-%d")
+    semana_que_vem_str = (agora + datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+    
+    todas_pagar = conn.execute("SELECT * FROM contas_pagar_receber WHERE tipo = 'Pagar' ORDER BY status DESC, data_vencimento ASC").fetchall()
+    todas_receber = conn.execute("SELECT * FROM contas_pagar_receber WHERE tipo = 'Receber' ORDER BY status DESC, data_vencimento ASC").fetchall()
+    
+    def processar_contas(contas):
+        res = []
+        for c in contas:
+            d = dict(c)
+            d['data_vencimento_fmt'] = formatar_data_br(d['data_vencimento'])
+            d['data_pagamento_fmt'] = formatar_data_br(d['data_pagamento']) if d['data_pagamento'] else ""
+            d['atrasada'] = d['data_vencimento'] < hoje_str and d['status'] == 'Pendente'
+            res.append(d)
+        return res
+
+    contas_pagar = processar_contas(todas_pagar)
+    contas_receber = processar_contas(todas_receber)
+    
+    total_pagar = conn.execute("SELECT SUM(valor) as total FROM contas_pagar_receber WHERE tipo = 'Pagar' AND status = 'Pendente' AND data_vencimento BETWEEN ? AND ?", ("2000-01-01", semana_que_vem_str)).fetchone()['total'] or 0
+    total_receber = conn.execute("SELECT SUM(valor) as total FROM contas_pagar_receber WHERE tipo = 'Receber' AND status = 'Pendente' AND data_vencimento BETWEEN ? AND ?", ("2000-01-01", semana_que_vem_str)).fetchone()['total'] or 0
+    
+    entradas = conn.execute("SELECT SUM(valor) as t FROM fluxo_caixa WHERE tipo = 'Entrada'").fetchone()['t'] or 0
+    saidas = conn.execute("SELECT SUM(valor) as t FROM fluxo_caixa WHERE tipo = 'Saída'").fetchone()['t'] or 0
+    saldo_geral = entradas - saidas
+    
+    resumo = {
+        "total_pagar": total_pagar,
+        "total_receber": total_receber,
+        "saldo_geral": saldo_geral
+    }
+    conn.close()
+    return render_template('gestao_financeira.html', contas_pagar=contas_pagar, contas_receber=contas_receber, resumo=resumo)
+
+@main_bp.route('/financeiro/contas/salvar', methods=['POST'])
+def salvar_conta():
+    tipo = request.form.get('tipo_conta')
+    descricao = request.form.get('descricao')
+    valor = request.form.get('valor')
+    data_vencimento = request.form.get('data_vencimento')
+    
+    conn = get_db_connection()
+    conn.execute("INSERT INTO contas_pagar_receber (tipo, descricao, valor, data_vencimento) VALUES (?, ?, ?, ?)",
+                 (tipo, descricao, valor, data_vencimento))
+    conn.commit()
+    conn.close()
+    return redirect(url_for('main.gestao_financeira'))
+
+@main_bp.route('/financeiro/contas/baixar', methods=['POST'])
+def baixar_conta():
+    conta_id = request.form.get('conta_id')
+    tipo = request.form.get('tipo')
+    forma_pagamento = request.form.get('forma_pagamento')
+    
+    conn = get_db_connection()
+    conta = conn.execute("SELECT * FROM contas_pagar_receber WHERE id = ?", (conta_id,)).fetchone()
+    if not conta:
+        conn.close()
+        return jsonify({"erro": True, "mensagem": "Conta não encontrada"})
+        
+    agora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    novo_status = 'Pago' if tipo == 'Pagar' else 'Recebido'
+    
+    conn.execute("UPDATE contas_pagar_receber SET status = ?, data_pagamento = ?, forma_pagamento = ? WHERE id = ?", 
+                 (novo_status, agora, forma_pagamento, conta_id))
+                 
+    tipo_caixa = 'Saída' if tipo == 'Pagar' else 'Entrada'
+    obs = f"Baixa de Conta a {tipo}: {conta['descricao']}"
+    conn.execute("INSERT INTO fluxo_caixa (tipo, valor, forma_pagamento, observacoes) VALUES (?, ?, ?, ?)",
+                 (tipo_caixa, conta['valor'], forma_pagamento, obs))
+    
+    conn.commit()
+    conn.close()
+    return jsonify({"erro": False, "mensagem": "Baixa realizada e caixa atualizado!"})

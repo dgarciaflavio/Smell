@@ -28,11 +28,17 @@ def init_estoque_db():
         valor_unitario REAL NOT NULL DEFAULT 0.0,
         quantidade INTEGER NOT NULL DEFAULT 0,
         status TEXT DEFAULT 'Ativo' CHECK (status IN ('Ativo', 'Inativo')),
+        foto TEXT,
         FOREIGN KEY (categoria_id) REFERENCES categorias (id)
     );
     """)
 
-    # Nova tabela obrigatória para gerar os Relatórios de Histórico de Consumo e Vendas
+    # Tenta adicionar a coluna de fotos caso o banco já exista
+    try:
+        cursor.execute("ALTER TABLE produtos ADD COLUMN foto TEXT;")
+    except sqlite3.OperationalError:
+        pass
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS historico_estoque (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

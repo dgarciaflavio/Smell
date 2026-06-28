@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Comprovante de Venda</title>
+    <style>
+        /* Configuração exata para Impressora Térmica 58mm */
+        @page { margin: 0; }
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            width: 58mm;
+            margin: 0 auto;
+            padding: 5px;
+            color: #000;
+            background: #fff;
+        }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .text-left { text-align: left; }
+        .bold { font-weight: bold; }
+        
+        /* Logo sofisticada em escala de cinza para térmica */
+        .logo-container { text-align: center; margin-bottom: 8px; }
+        .logo { max-width: 35mm; filter: grayscale(100%) contrast(1.2); }
+        
+        .divider { border-bottom: 1px dashed #000; margin: 6px 0; }
+        .header-info p { margin: 2px 0; font-size: 10px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+        th, td { padding: 3px 0; vertical-align: top; font-size: 10px; }
+        th { border-bottom: 1px solid #000; }
+        
+        .col-qtd { width: 15%; text-align: center; }
+        .col-desc { width: 55%; }
+        .col-vl { width: 30%; text-align: right; }
+        
+        .total-section { margin-top: 5px; }
+        .total-row { display: flex; justify-content: space-between; font-size: 11px; margin: 3px 0; }
+        .total-row.grand-total { font-size: 13px; font-weight: bold; margin-top: 5px; padding-top: 5px; border-top: 1px solid #000; }
+        
+        .footer { margin-top: 15px; font-size: 10px; }
+        
+        /* Oculta botão na hora da impressão real */
+        @media print {
+            .no-print { display: none; }
+        }
+        .btn-print { 
+            width: 100%; padding: 10px; background: #000; color: #fff; 
+            border: none; cursor: pointer; margin-bottom: 15px; 
+            font-family: sans-serif; font-weight: bold; font-size: 12px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <button class="no-print btn-print" onclick="window.print()">IMPRIMIR COMPROVANTE</button>
+
+    <div class="logo-container">
+        <!-- Puxa a logo do sistema -->
+        <img src="/static/img/LogoSmell.png" alt="Smell Terapia Natural" class="logo">
+    </div>
+
+    <div class="text-center header-info">
+        <p class="bold" style="font-size: 12px; margin-bottom: 4px;">COMPROVANTE DE VENDA</p>
+        <p class="bold">SMELL TERAPIA NATURAL</p>
+        <p>CNPJ: 60.110.190/0001-21</p>
+        <p>Telefone: (21) 2146-9161</p>
+        <p>Rua Cachambi, 518 - Loja A</p>
+        <p>Cachambi - RIO DE JANEIRO/RJ</p>
+        <p>CEP: 20.771-632</p>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="header-info text-left">
+        <div style="display: flex; justify-content: space-between;">
+            <p>{{ venda.data_fmt }}</p>
+            <p>{{ venda.hora_fmt }}</p>
+        </div>
+        <p>Venda: {{ venda.id }}</p>
+        <p>Cliente: <span class="bold">{{ venda.cliente_nome }}</span></p>
+        <p>Vendedor: {{ venda.vendedor_nome }}</p>
+    </div>
+
+    <div class="divider"></div>
+
+    <table>
+        <thead>
+            <tr>
+                <th class="col-qtd">QTD</th>
+                <th class="col-desc text-left">COD | DESC</th>
+                <th class="col-vl">VL.TOTAL</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in itens %}
+            <tr>
+                <td class="col-qtd">{{ item.quantidade }}</td>
+                <td class="col-desc">
+                    {{ item.codigo }} | {{ item.descricao }}<br>
+                    <span style="font-size: 9px; color: #333;">UN: R$ {{ "%.2f"|format(item.valor_unitario) }}</span>
+                </td>
+                <td class="col-vl">R$ {{ "%.2f"|format(item.total_item) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="divider"></div>
+
+    <div class="header-info">
+        <p class="bold text-center" style="margin-bottom: 5px;">PAGAMENTO</p>
+        <div class="total-row">
+            <span>Valor da venda</span>
+            <span>R$ {{ "%.2f"|format(venda.valor_total) }}</span>
+        </div>
+        <div class="total-row grand-total">
+            <span>Valor total</span>
+            <span>R$ {{ "%.2f"|format(venda.valor_total) }}</span>
+        </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="header-info">
+        <p class="bold" style="margin-bottom: 3px;">TIPO DE PAGAMENTO:</p>
+        <div class="total-row">
+            <span>{{ venda.forma_pagamento }}</span>
+            <span class="bold">R$ {{ "%.2f"|format(venda.valor_total) }}</span>
+        </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="text-center footer">
+        <p class="bold" style="font-size: 11px;">Obrigado, volte sempre!</p>
+        <p style="margin-top: 5px;">SmartPOS</p>
+    </div>
+
+    <script>
+        // Opcional: Descomente a linha abaixo para abrir a janela de impressão automaticamente
+        // window.onload = function() { window.print(); }
+    </script>
+</body>
+</html>

@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 style="color: var(--text-dark); font-weight: 600;"><i class="fa-solid fa-scale-balanced" style="color: var(--color-smell-primary);"></i> Gestão Financeira Consolidada</h3>
+        <button class="btn btn-primary" style="background-color: var(--color-smell-primary); border: none;" data-bs-toggle="modal" data-bs-target="#modalNovaConta">
+            <i class="fa-solid fa-plus"></i> Novo Lançamento (Pagar/Receber)
+        </button>
+    </div>
+
+    <!-- Cards de Resumo -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0" style="border-radius: 12px; border-left: 5px solid #ef4444 !important;">
+                <div class="card-body">
+                    <h6 class="text-muted fw-bold mb-1"><i class="fas fa-arrow-down text-danger"></i> A Pagar (Próx. 7 dias)</h6>
+                    <h3 class="fw-bold text-danger m-0">R$ {{ "%.2f"|format(resumo.total_pagar) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0" style="border-radius: 12px; border-left: 5px solid #10b981 !important;">
+                <div class="card-body">
+                    <h6 class="text-muted fw-bold mb-1"><i class="fas fa-arrow-up text-success"></i> A Receber (Próx. 7 dias)</h6>
+                    <h3 class="fw-bold text-success m-0">R$ {{ "%.2f"|format(resumo.total_receber) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0" style="border-radius: 12px; background: linear-gradient(135deg, #1e293b, #0f172a);">
+                <div class="card-body text-white">
+                    <h6 class="text-white-50 fw-bold mb-1"><i class="fas fa-wallet"></i> Saldo Atual Caixa Geral</h6>
+                    <h3 class="fw-bold m-0 text-white">R$ {{ "%.2f"|format(resumo.saldo_geral) }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Abas de Navegação -->
+    <div class="card shadow-sm border-0" style="border-radius: 12px; overflow: hidden;">
+        <div class="card-header bg-white border-bottom pt-3 pb-0">
+            <ul class="nav nav-tabs border-0" id="financeiroTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active fw-bold" id="pagar-tab" data-bs-toggle="tab" data-bs-target="#pagar" type="button" role="tab" style="color: #ef4444;">
+                        <i class="fa-solid fa-file-invoice-dollar"></i> Contas a Pagar
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link fw-bold" id="receber-tab" data-bs-toggle="tab" data-bs-target="#receber" type="button" role="tab" style="color: #10b981;">
+                        <i class="fa-solid fa-hand-holding-dollar"></i> Contas a Receber
+                    </button>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card-body p-0">
+            <div class="tab-content" id="myTabContent">
+                
+                <!-- Aba: Contas a Pagar -->
+                <div class="tab-pane fade show active" id="pagar" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0" style="font-size: 0.95rem;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-4">Vencimento</th>
+                                    <th>Descrição do Boleto / Despesa</th>
+                                    <th>Valor</th>
+                                    <th>Status</th>
+                                    <th class="pe-4 text-end">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for conta in contas_pagar %}
+                                <tr>
+                                    <td class="ps-4 fw-bold {% if conta.status == 'Pendente' and conta.atrasada %}text-danger{% endif %}">
+                                        {{ conta.data_vencimento_fmt }}
+                                        {% if conta.status == 'Pendente' and conta.atrasada %}<br><small class="text-danger"><i class="fa-solid fa-circle-exclamation"></i> Vencida</small>{% endif %}
+                                    </td>
+                                    <td>{{ conta.descricao }}</td>
+                                    <td class="text-danger fw-bold">R$ {{ "%.2f"|format(conta.valor) }}</td>
+                                    <td>
+                                        {% if conta.status == 'Pendente' %}
+                                            <span class="badge bg-warning text-dark px-2 py-1 rounded-pill">Pendente</span>
+                                        {% else %}
+                                            <span class="badge bg-success px-2 py-1 rounded-pill">Pago</span><br>
+                                            <small class="text-muted" style="font-size: 0.75rem;">Em: {{ conta.data_pagamento_fmt }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td class="pe-4 text-end">
+                                        {% if conta.status == 'Pendente' %}
+                                        <button class="btn btn-sm btn-outline-success" onclick="abrirModalBaixa({{ conta.id }}, 'Pagar', {{ conta.valor }}, '{{ conta.descricao|escape }}')">
+                                            <i class="fas fa-check"></i> Baixar Conta
+                                        </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="5" class="text-center py-4 text-muted">Nenhuma conta a pagar registrada.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Aba: Contas a Receber -->
+                <div class="tab-pane fade" id="receber" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0" style="font-size: 0.95rem;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-4">Prev. Recebimento</th>
+                                    <th>Descrição / Origem</th>
+                                    <th>Valor</th>
+                                    <th>Status</th>
+                                    <th class="pe-4 text-end">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for conta in contas_receber %}
+                                <tr>
+                                    <td class="ps-4 fw-bold {% if conta.status == 'Pendente' and conta.atrasada %}text-danger{% endif %}">
+                                        {{ conta.data_vencimento_fmt }}
+                                        {% if conta.status == 'Pendente' and conta.atrasada %}<br><small class="text-danger"><i class="fa-solid fa-circle-exclamation"></i> Atrasado</small>{% endif %}
+                                    </td>
+                                    <td>{{ conta.descricao }}</td>
+                                    <td class="text-success fw-bold">R$ {{ "%.2f"|format(conta.valor) }}</td>
+                                    <td>
+                                        {% if conta.status == 'Pendente' %}
+                                            <span class="badge bg-warning text-dark px-2 py-1 rounded-pill">Aguardando</span>
+                                        {% else %}
+                                            <span class="badge bg-success px-2 py-1 rounded-pill">Recebido</span><br>
+                                            <small class="text-muted" style="font-size: 0.75rem;">Em: {{ conta.data_pagamento_fmt }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td class="pe-4 text-end">
+                                        {% if conta.status == 'Pendente' %}
+                                        <button class="btn btn-sm btn-outline-success" onclick="abrirModalBaixa({{ conta.id }}, 'Receber', {{ conta.valor }}, '{{ conta.descricao|escape }}')">
+                                            <i class="fas fa-check"></i> Confirmar
+                                        </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="5" class="text-center py-4 text-muted">Nenhuma conta a receber registrada.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nova Conta Geral -->
+<div class="modal fade" id="modalNovaConta" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content border-0" style="border-radius: 12px;">
+            <div class="modal-header text-white" style="background-color: var(--color-smell-primary); border-radius: 12px 12px 0 0;">
+                <h5 class="modal-title fw-bold"><i class="fa-solid fa-plus-circle"></i> Novo Lançamento Agendado</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/financeiro/contas/salvar" method="POST">
+                <div class="modal-body p-4">
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-muted">Tipo de Movimentação</label>
+                        <select name="tipo_conta" class="form-select" required>
+                            <option value="Pagar">Saída (Conta a Pagar)</option>
+                            <option value="Receber">Entrada (Conta a Receber)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-muted">Descrição (Ex: Luz, Aluguel, Pacote Cliente X)</label>
+                        <input type="text" name="descricao" class="form-control" required placeholder="Do que se trata?">
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold small text-muted">Valor (R$)</label>
+                            <input type="number" step="0.01" name="valor" class="form-control" required placeholder="0,00">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold small text-muted">Data de Vencimento/Previsão</label>
+                            <input type="date" name="data_vencimento" class="form-control" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-0" style="border-radius: 0 0 12px 12px;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" style="background-color: var(--color-smell-primary); border: none;">Salvar Lançamento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Confirmação de Baixa -->
+<div class="modal fade" id="modalBaixaConta" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0" style="border-radius: 12px;">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold" id="tituloBaixa">Confirmar Pagamento/Recebimento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="formBaixarConta">
+                <div class="modal-body p-4 text-center">
+                    <input type="hidden" name="conta_id" id="baixaContaId">
+                    <input type="hidden" name="tipo" id="baixaTipo">
+                    
+                    <i class="fa-solid fa-money-bill-transfer fa-3x text-success mb-3"></i>
+                    <h5 id="baixaDescricao" class="mb-1 text-dark"></h5>
+                    <h3 id="baixaValor" class="fw-bold text-success mb-4"></h3>
+
+                    <div class="mb-3 text-start">
+                        <label class="form-label fw-bold small text-muted">Forma de Pagamento Utilizada no Caixa</label>
+                        <select name="forma_pagamento" class="form-select" required>
+                            <option value="Pix">Pix</option>
+                            <option value="Dinheiro">Dinheiro</option>
+                            <option value="Cartão de Crédito">Cartão de Crédito</option>
+                            <option value="Cartão de Débito">Cartão de Débito</option>
+                            <option value="Transferência Bancária">Transferência Bancária</option>
+                        </select>
+                    </div>
+                    <p class="small text-muted mb-0"><i class="fa-solid fa-circle-info"></i> Ao confirmar, este valor será injetado/descontado imediatamente do Saldo do Caixa Geral da clínica.</p>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success"><i class="fas fa-check-circle"></i> Confirmar e Atualizar Caixa</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function abrirModalBaixa(id, tipo, valor, descricao) {
+        document.getElementById('baixaContaId').value = id;
+        document.getElementById('baixaTipo').value = tipo;
+        document.getElementById('baixaDescricao').innerText = descricao;
+        
+        let cor = tipo === 'Pagar' ? 'text-danger' : 'text-success';
+        let valFormatado = `R$ ${valor.toFixed(2).replace('.', ',')}`;
+        
+        let elemValor = document.getElementById('baixaValor');
+        elemValor.className = `fw-bold mb-4 ${cor}`;
+        elemValor.innerText = valFormatado;
+        
+        document.getElementById('tituloBaixa').innerText = tipo === 'Pagar' ? 'Confirmar Pagamento de Conta' : 'Confirmar Recebimento';
+        
+        var myModal = new bootstrap.Modal(document.getElementById('modalBaixaConta'));
+        myModal.show();
+    }
+
+    document.getElementById('formBaixarConta').addEventListener('submit', function(e) {
+        e.preventDefault();
+        let formData = new FormData(this);
+        
+        fetch('/financeiro/contas/baixar', {
+            method: 'POST',
+            body: formData
+        }).then(resp => resp.json()).then(data => {
+            if(data.erro) {
+                alert(data.mensagem);
+            } else {
+                location.reload();
+            }
+        });
+    });
+</script>
+{% endblock %}
