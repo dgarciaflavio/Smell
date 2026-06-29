@@ -1,265 +1,569 @@
 {% extends "base.html" %}
 
+{% block title %}Gestão Financeira | Smell CLINIC{% endblock %}
+
+{% block head %}
+<style>
+    .fin-container {
+        padding: 10px 0;
+    }
+
+    .fin-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+
+    .fin-title {
+        color: var(--text-dark);
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .btn-novo-lancamento {
+        background-color: var(--color-smell-primary);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .btn-novo-lancamento:hover {
+        opacity: 0.9;
+    }
+
+    /* Cards de Resumo */
+    .fin-resumo-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .fin-card {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        border: 1px solid #ebebeb;
+        border-left-width: 6px;
+    }
+
+    .fin-card.pagar { border-left-color: #ef4444; }
+    .fin-card.receber { border-left-color: #10b981; }
+    .fin-card.saldo { 
+        border-left-color: #1e293b; 
+        background: linear-gradient(135deg, #1e293b, #0f172a); 
+        color: white; 
+    }
+
+    .fin-card-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .fin-card:not(.saldo) .fin-card-title { color: #64748b; }
+    .fin-card.saldo .fin-card-title { color: #94a3b8; }
+
+    .fin-card-value {
+        font-size: 2rem;
+        font-weight: bold;
+        margin: 0;
+    }
+
+    .text-danger { color: #ef4444; }
+    .text-success { color: #10b981; }
+
+    /* Sistema de Abas */
+    .fin-tabs-wrapper {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        border: 1px solid #ebebeb;
+        overflow: hidden;
+    }
+
+    .fin-tabs {
+        display: flex;
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+    }
+
+    .fin-tab {
+        background: none;
+        border: none;
+        padding: 16px 24px;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #64748b;
+        cursor: pointer;
+        border-bottom: 3px solid transparent;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .fin-tab:hover { background: #f1f5f9; }
+    
+    .fin-tab.active.pagar-tab { 
+        color: #ef4444; 
+        border-bottom-color: #ef4444; 
+        background: white;
+    }
+    
+    .fin-tab.active.receber-tab { 
+        color: #10b981; 
+        border-bottom-color: #10b981; 
+        background: white;
+    }
+
+    .fin-tab-content { display: none; }
+    .fin-tab-content.active { display: block; }
+
+    /* Tabelas */
+    .fin-table-container { overflow-x: auto; }
+    
+    .fin-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+    }
+
+    .fin-table th {
+        padding: 16px 24px;
+        background: white;
+        color: #475569;
+        font-size: 0.85rem;
+        font-weight: 600;
+        border-bottom: 2px solid #e2e8f0;
+    }
+
+    .fin-table td {
+        padding: 16px 24px;
+        border-bottom: 1px solid #e2e8f0;
+        color: #334155;
+        font-size: 0.95rem;
+        vertical-align: middle;
+    }
+
+    .fin-table tr:hover td { background: #f8fafc; }
+
+    .fin-badge {
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        display: inline-block;
+    }
+
+    .badge-pendente { background: #fef08a; color: #b45309; }
+    .badge-pago { background: #d1fae5; color: #047857; }
+
+    .btn-acao {
+        background: white;
+        border: 1px solid #10b981;
+        color: #10b981;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .btn-acao:hover {
+        background: #10b981;
+        color: white;
+    }
+
+    /* Modais Customizados */
+    .fin-modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.6);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .fin-modal-overlay.active { display: flex; }
+
+    .fin-modal {
+        background: white;
+        width: 100%;
+        max-width: 500px;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        animation: slideDown 0.3s ease;
+    }
+
+    @keyframes slideDown {
+        from { opacity: 0; transform: translateY(-20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .fin-modal-header {
+        background: var(--color-smell-primary);
+        color: white;
+        padding: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .fin-modal-header h3 { margin: 0; font-size: 1.2rem; }
+    
+    .fin-btn-close {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 1.5rem;
+        cursor: pointer;
+        opacity: 0.8;
+    }
+    .fin-btn-close:hover { opacity: 1; }
+
+    .fin-modal-body { padding: 24px; }
+    
+    .fin-form-group { margin-bottom: 16px; }
+    .fin-form-group label {
+        display: block;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #64748b;
+        margin-bottom: 8px;
+    }
+    .fin-form-control {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        background: #f8fafc;
+    }
+    .fin-form-control:focus {
+        outline: none;
+        border-color: var(--color-smell-primary);
+        background: white;
+    }
+
+    .fin-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    .fin-modal-footer {
+        padding: 16px 24px;
+        background: #f8fafc;
+        border-top: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+    }
+
+    .btn-cancel {
+        background: white;
+        border: 1px solid #cbd5e1;
+        color: #475569;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .btn-cancel:hover { background: #f1f5f9; }
+
+    .btn-submit {
+        background: var(--color-smell-primary);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .btn-submit:hover { opacity: 0.9; }
+
+    .text-center { text-align: center; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container-fluid py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 style="color: var(--text-dark); font-weight: 600;"><i class="fa-solid fa-scale-balanced" style="color: var(--color-smell-primary);"></i> Gestão Financeira Consolidada</h3>
-        <button class="btn btn-primary" style="background-color: var(--color-smell-primary); border: none;" data-bs-toggle="modal" data-bs-target="#modalNovaConta">
-            <i class="fa-solid fa-plus"></i> Novo Lançamento (Pagar/Receber)
+<div class="fin-container">
+    <div class="fin-header">
+        <h3 class="fin-title">
+            <i class="fa-solid fa-scale-balanced" style="color: var(--color-smell-primary);"></i> 
+            Gestão Financeira Consolidada
+        </h3>
+        <button class="btn-novo-lancamento" onclick="abrirModal('modalNovaConta')">
+            <i class="fa-solid fa-plus"></i> Novo Lançamento
         </button>
     </div>
 
     <!-- Cards de Resumo -->
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0" style="border-radius: 12px; border-left: 5px solid #ef4444 !important;">
-                <div class="card-body">
-                    <h6 class="text-muted fw-bold mb-1"><i class="fas fa-arrow-down text-danger"></i> A Pagar (Próx. 7 dias)</h6>
-                    <h3 class="fw-bold text-danger m-0">R$ {{ "%.2f"|format(resumo.total_pagar) }}</h3>
-                </div>
-            </div>
+    <div class="fin-resumo-grid">
+        <div class="fin-card pagar">
+            <div class="fin-card-title"><i class="fas fa-arrow-down text-danger"></i> A Pagar (Próx. 7 dias)</div>
+            <p class="fin-card-value text-danger">R$ {{ "%.2f"|format(resumo.total_pagar) }}</p>
         </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0" style="border-radius: 12px; border-left: 5px solid #10b981 !important;">
-                <div class="card-body">
-                    <h6 class="text-muted fw-bold mb-1"><i class="fas fa-arrow-up text-success"></i> A Receber (Próx. 7 dias)</h6>
-                    <h3 class="fw-bold text-success m-0">R$ {{ "%.2f"|format(resumo.total_receber) }}</h3>
-                </div>
-            </div>
+        <div class="fin-card receber">
+            <div class="fin-card-title"><i class="fas fa-arrow-up text-success"></i> A Receber (Próx. 7 dias)</div>
+            <p class="fin-card-value text-success">R$ {{ "%.2f"|format(resumo.total_receber) }}</p>
         </div>
-        <div class="col-md-4">
-            <div class="card shadow-sm border-0" style="border-radius: 12px; background: linear-gradient(135deg, #1e293b, #0f172a);">
-                <div class="card-body text-white">
-                    <h6 class="text-white-50 fw-bold mb-1"><i class="fas fa-wallet"></i> Saldo Atual Caixa Geral</h6>
-                    <h3 class="fw-bold m-0 text-white">R$ {{ "%.2f"|format(resumo.saldo_geral) }}</h3>
-                </div>
-            </div>
+        <div class="fin-card saldo">
+            <div class="fin-card-title"><i class="fas fa-wallet"></i> Saldo Atual Caixa Geral</div>
+            <p class="fin-card-value">R$ {{ "%.2f"|format(resumo.saldo_geral) }}</p>
         </div>
     </div>
 
-    <!-- Abas de Navegação -->
-    <div class="card shadow-sm border-0" style="border-radius: 12px; overflow: hidden;">
-        <div class="card-header bg-white border-bottom pt-3 pb-0">
-            <ul class="nav nav-tabs border-0" id="financeiroTabs" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active fw-bold" id="pagar-tab" data-bs-toggle="tab" data-bs-target="#pagar" type="button" role="tab" style="color: #ef4444;">
-                        <i class="fa-solid fa-file-invoice-dollar"></i> Contas a Pagar
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link fw-bold" id="receber-tab" data-bs-toggle="tab" data-bs-target="#receber" type="button" role="tab" style="color: #10b981;">
-                        <i class="fa-solid fa-hand-holding-dollar"></i> Contas a Receber
-                    </button>
-                </li>
-            </ul>
+    <!-- Container de Abas e Tabelas -->
+    <div class="fin-tabs-wrapper">
+        <div class="fin-tabs">
+            <button class="fin-tab pagar-tab active" onclick="trocarAba(event, 'aba-pagar')">
+                <i class="fa-solid fa-file-invoice-dollar"></i> Contas a Pagar
+            </button>
+            <button class="fin-tab receber-tab" onclick="trocarAba(event, 'aba-receber')">
+                <i class="fa-solid fa-hand-holding-dollar"></i> Contas a Receber
+            </button>
         </div>
 
-        <div class="card-body p-0">
-            <div class="tab-content" id="myTabContent">
+        <!-- Conteúdo Aba: A PAGAR -->
+        <div id="aba-pagar" class="fin-tab-content active">
+            <div class="fin-table-container">
+                <table class="fin-table">
+                    <thead>
+                        <tr>
+                            <th>Vencimento</th>
+                            <th>Descrição da Despesa</th>
+                            <th>Valor</th>
+                            <th>Status</th>
+                            <th style="text-align: right;">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for conta in contas_pagar %}
+                        <tr>
+                            <td>
+                                <strong class="{% if conta.status == 'Pendente' and conta.atrasada %}text-danger{% endif %}">
+                                    {{ conta.data_vencimento_fmt }}
+                                </strong>
+                                {% if conta.status == 'Pendente' and conta.atrasada %}
+                                    <br><span style="font-size: 0.75rem; color: #ef4444;"><i class="fa-solid fa-circle-exclamation"></i> Vencida</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ conta.descricao }}</td>
+                            <td><strong class="text-danger">R$ {{ "%.2f"|format(conta.valor) }}</strong></td>
+                            <td>
+                                {% if conta.status == 'Pendente' %}
+                                    <span class="fin-badge badge-pendente">Pendente</span>
+                                {% else %}
+                                    <span class="fin-badge badge-pago">Pago</span><br>
+                                    <span style="font-size: 0.75rem; color: #94a3b8;">Em: {{ conta.data_pagamento_fmt }}</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: right;">
+                                {% if conta.status == 'Pendente' %}
+                                <button class="btn-acao" onclick="abrirModalBaixa({{ conta.id }}, 'Pagar', {{ conta.valor }}, '{{ conta.descricao|escape }}')">
+                                    <i class="fas fa-check"></i> Baixar Conta
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center" style="padding: 40px; color: #94a3b8;">Nenhuma conta a pagar registrada no momento.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Conteúdo Aba: A RECEBER -->
+        <div id="aba-receber" class="fin-tab-content">
+            <div class="fin-table-container">
+                <table class="fin-table">
+                    <thead>
+                        <tr>
+                            <th>Previsão Recebimento</th>
+                            <th>Descrição da Origem</th>
+                            <th>Valor</th>
+                            <th>Status</th>
+                            <th style="text-align: right;">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for conta in contas_receber %}
+                        <tr>
+                            <td>
+                                <strong class="{% if conta.status == 'Pendente' and conta.atrasada %}text-danger{% endif %}">
+                                    {{ conta.data_vencimento_fmt }}
+                                </strong>
+                                {% if conta.status == 'Pendente' and conta.atrasada %}
+                                    <br><span style="font-size: 0.75rem; color: #ef4444;"><i class="fa-solid fa-circle-exclamation"></i> Atrasada</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ conta.descricao }}</td>
+                            <td><strong class="text-success">R$ {{ "%.2f"|format(conta.valor) }}</strong></td>
+                            <td>
+                                {% if conta.status == 'Pendente' %}
+                                    <span class="fin-badge badge-pendente">Aguardando</span>
+                                {% else %}
+                                    <span class="fin-badge badge-pago">Recebido</span><br>
+                                    <span style="font-size: 0.75rem; color: #94a3b8;">Em: {{ conta.data_pagamento_fmt }}</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: right;">
+                                {% if conta.status == 'Pendente' %}
+                                <button class="btn-acao" onclick="abrirModalBaixa({{ conta.id }}, 'Receber', {{ conta.valor }}, '{{ conta.descricao|escape }}')">
+                                    <i class="fas fa-check"></i> Confirmar
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center" style="padding: 40px; color: #94a3b8;">Nenhuma conta a receber registrada no momento.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 1: Novo Lançamento -->
+<div class="fin-modal-overlay" id="modalNovaConta">
+    <div class="fin-modal">
+        <div class="fin-modal-header">
+            <h3><i class="fa-solid fa-plus-circle"></i> Novo Lançamento Agendado</h3>
+            <button class="fin-btn-close" onclick="fecharModal('modalNovaConta')"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form action="/financeiro/contas/salvar" method="POST">
+            <div class="fin-modal-body">
+                <div class="fin-form-group">
+                    <label>Tipo de Movimentação</label>
+                    <select name="tipo_conta" class="fin-form-control" required>
+                        <option value="Pagar">Saída (Conta a Pagar)</option>
+                        <option value="Receber">Entrada (Conta a Receber)</option>
+                    </select>
+                </div>
+                <div class="fin-form-group">
+                    <label>Descrição (Ex: Luz, Aluguel, Pacote Cliente X)</label>
+                    <input type="text" name="descricao" class="fin-form-control" required placeholder="Do que se trata?">
+                </div>
+                <div class="fin-row">
+                    <div class="fin-form-group">
+                        <label>Valor (R$)</label>
+                        <input type="number" step="0.01" name="valor" class="fin-form-control" required placeholder="0.00">
+                    </div>
+                    <div class="fin-form-group">
+                        <label>Vencimento/Previsão</label>
+                        <input type="date" name="data_vencimento" class="fin-form-control" required>
+                    </div>
+                </div>
+            </div>
+            <div class="fin-modal-footer">
+                <button type="button" class="btn-cancel" onclick="fecharModal('modalNovaConta')">Cancelar</button>
+                <button type="submit" class="btn-submit">Salvar Lançamento</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal 2: Confirmar Baixa/Pagamento -->
+<div class="fin-modal-overlay" id="modalBaixaConta">
+    <div class="fin-modal">
+        <div class="fin-modal-header" style="background: #f8fafc; color: #0f172a; border-bottom: 1px solid #e2e8f0;">
+            <h3 id="tituloBaixa">Confirmar Movimentação</h3>
+            <button class="fin-btn-close" onclick="fecharModal('modalBaixaConta')" style="color: #64748b;"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form id="formBaixarConta">
+            <div class="fin-modal-body text-center">
+                <input type="hidden" name="conta_id" id="baixaContaId">
+                <input type="hidden" name="tipo" id="baixaTipo">
                 
-                <!-- Aba: Contas a Pagar -->
-                <div class="tab-pane fade show active" id="pagar" role="tabpanel">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0" style="font-size: 0.95rem;">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="ps-4">Vencimento</th>
-                                    <th>Descrição do Boleto / Despesa</th>
-                                    <th>Valor</th>
-                                    <th>Status</th>
-                                    <th class="pe-4 text-end">Ação</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for conta in contas_pagar %}
-                                <tr>
-                                    <td class="ps-4 fw-bold {% if conta.status == 'Pendente' and conta.atrasada %}text-danger{% endif %}">
-                                        {{ conta.data_vencimento_fmt }}
-                                        {% if conta.status == 'Pendente' and conta.atrasada %}<br><small class="text-danger"><i class="fa-solid fa-circle-exclamation"></i> Vencida</small>{% endif %}
-                                    </td>
-                                    <td>{{ conta.descricao }}</td>
-                                    <td class="text-danger fw-bold">R$ {{ "%.2f"|format(conta.valor) }}</td>
-                                    <td>
-                                        {% if conta.status == 'Pendente' %}
-                                            <span class="badge bg-warning text-dark px-2 py-1 rounded-pill">Pendente</span>
-                                        {% else %}
-                                            <span class="badge bg-success px-2 py-1 rounded-pill">Pago</span><br>
-                                            <small class="text-muted" style="font-size: 0.75rem;">Em: {{ conta.data_pagamento_fmt }}</small>
-                                        {% endif %}
-                                    </td>
-                                    <td class="pe-4 text-end">
-                                        {% if conta.status == 'Pendente' %}
-                                        <button class="btn btn-sm btn-outline-success" onclick="abrirModalBaixa({{ conta.id }}, 'Pagar', {{ conta.valor }}, '{{ conta.descricao|escape }}')">
-                                            <i class="fas fa-check"></i> Baixar Conta
-                                        </button>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                {% else %}
-                                <tr><td colspan="5" class="text-center py-4 text-muted">Nenhuma conta a pagar registrada.</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                <i class="fa-solid fa-money-bill-transfer fa-3x text-success" style="margin-bottom: 15px;"></i>
+                <h4 id="baixaDescricao" style="color: #334155; margin: 0 0 5px 0;"></h4>
+                <h2 id="baixaValor" style="margin: 0 0 20px 0;"></h2>
 
-                <!-- Aba: Contas a Receber -->
-                <div class="tab-pane fade" id="receber" role="tabpanel">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0" style="font-size: 0.95rem;">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="ps-4">Prev. Recebimento</th>
-                                    <th>Descrição / Origem</th>
-                                    <th>Valor</th>
-                                    <th>Status</th>
-                                    <th class="pe-4 text-end">Ação</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for conta in contas_receber %}
-                                <tr>
-                                    <td class="ps-4 fw-bold {% if conta.status == 'Pendente' and conta.atrasada %}text-danger{% endif %}">
-                                        {{ conta.data_vencimento_fmt }}
-                                        {% if conta.status == 'Pendente' and conta.atrasada %}<br><small class="text-danger"><i class="fa-solid fa-circle-exclamation"></i> Atrasado</small>{% endif %}
-                                    </td>
-                                    <td>{{ conta.descricao }}</td>
-                                    <td class="text-success fw-bold">R$ {{ "%.2f"|format(conta.valor) }}</td>
-                                    <td>
-                                        {% if conta.status == 'Pendente' %}
-                                            <span class="badge bg-warning text-dark px-2 py-1 rounded-pill">Aguardando</span>
-                                        {% else %}
-                                            <span class="badge bg-success px-2 py-1 rounded-pill">Recebido</span><br>
-                                            <small class="text-muted" style="font-size: 0.75rem;">Em: {{ conta.data_pagamento_fmt }}</small>
-                                        {% endif %}
-                                    </td>
-                                    <td class="pe-4 text-end">
-                                        {% if conta.status == 'Pendente' %}
-                                        <button class="btn btn-sm btn-outline-success" onclick="abrirModalBaixa({{ conta.id }}, 'Receber', {{ conta.valor }}, '{{ conta.descricao|escape }}')">
-                                            <i class="fas fa-check"></i> Confirmar
-                                        </button>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                {% else %}
-                                <tr><td colspan="5" class="text-center py-4 text-muted">Nenhuma conta a receber registrada.</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="fin-form-group" style="text-align: left;">
+                    <label>Forma de Pagamento Utilizada no Caixa</label>
+                    <select name="forma_pagamento" class="fin-form-control" required>
+                        <option value="Pix">Pix</option>
+                        <option value="Dinheiro">Dinheiro</option>
+                        <option value="Cartão de Crédito">Cartão de Crédito</option>
+                        <option value="Cartão de Débito">Cartão de Débito</option>
+                        <option value="Transferência Bancária">Transferência Bancária</option>
+                    </select>
                 </div>
-
+                <p style="font-size: 0.8rem; color: #64748b; margin: 0; text-align: left;">
+                    <i class="fa-solid fa-circle-info"></i> Ao confirmar, este valor afetará o seu <strong>Saldo do Caixa Geral</strong> imediatamente.
+                </p>
             </div>
-        </div>
-    </div>
-</div>
-
-<!-- Modal Nova Conta Geral -->
-<div class="modal fade" id="modalNovaConta" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content border-0" style="border-radius: 12px;">
-            <div class="modal-header text-white" style="background-color: var(--color-smell-primary); border-radius: 12px 12px 0 0;">
-                <h5 class="modal-title fw-bold"><i class="fa-solid fa-plus-circle"></i> Novo Lançamento Agendado</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            <div class="fin-modal-footer">
+                <button type="button" class="btn-cancel" onclick="fecharModal('modalBaixaConta')">Cancelar</button>
+                <button type="submit" class="btn-submit" style="background: #10b981;">Confirmar e Atualizar Caixa</button>
             </div>
-            <form action="/financeiro/contas/salvar" method="POST">
-                <div class="modal-body p-4">
-                    
-                    <div class="mb-3">
-                        <label class="form-label fw-bold small text-muted">Tipo de Movimentação</label>
-                        <select name="tipo_conta" class="form-select" required>
-                            <option value="Pagar">Saída (Conta a Pagar)</option>
-                            <option value="Receber">Entrada (Conta a Receber)</option>
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold small text-muted">Descrição (Ex: Luz, Aluguel, Pacote Cliente X)</label>
-                        <input type="text" name="descricao" class="form-control" required placeholder="Do que se trata?">
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold small text-muted">Valor (R$)</label>
-                            <input type="number" step="0.01" name="valor" class="form-control" required placeholder="0,00">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold small text-muted">Data de Vencimento/Previsão</label>
-                            <input type="date" name="data_vencimento" class="form-control" required>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer bg-light border-0" style="border-radius: 0 0 12px 12px;">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" style="background-color: var(--color-smell-primary); border: none;">Salvar Lançamento</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Modal Confirmação de Baixa -->
-<div class="modal fade" id="modalBaixaConta" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0" style="border-radius: 12px;">
-            <div class="modal-header bg-light">
-                <h5 class="modal-title fw-bold" id="tituloBaixa">Confirmar Pagamento/Recebimento</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="formBaixarConta">
-                <div class="modal-body p-4 text-center">
-                    <input type="hidden" name="conta_id" id="baixaContaId">
-                    <input type="hidden" name="tipo" id="baixaTipo">
-                    
-                    <i class="fa-solid fa-money-bill-transfer fa-3x text-success mb-3"></i>
-                    <h5 id="baixaDescricao" class="mb-1 text-dark"></h5>
-                    <h3 id="baixaValor" class="fw-bold text-success mb-4"></h3>
-
-                    <div class="mb-3 text-start">
-                        <label class="form-label fw-bold small text-muted">Forma de Pagamento Utilizada no Caixa</label>
-                        <select name="forma_pagamento" class="form-select" required>
-                            <option value="Pix">Pix</option>
-                            <option value="Dinheiro">Dinheiro</option>
-                            <option value="Cartão de Crédito">Cartão de Crédito</option>
-                            <option value="Cartão de Débito">Cartão de Débito</option>
-                            <option value="Transferência Bancária">Transferência Bancária</option>
-                        </select>
-                    </div>
-                    <p class="small text-muted mb-0"><i class="fa-solid fa-circle-info"></i> Ao confirmar, este valor será injetado/descontado imediatamente do Saldo do Caixa Geral da clínica.</p>
-                </div>
-                <div class="modal-footer border-0">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-success"><i class="fas fa-check-circle"></i> Confirmar e Atualizar Caixa</button>
-                </div>
-            </form>
-        </div>
+        </form>
     </div>
 </div>
 
 <script>
+    // Controle das Abas (Nativo)
+    function trocarAba(event, abaId) {
+        document.querySelectorAll('.fin-tab').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.fin-tab-content').forEach(content => content.classList.remove('active'));
+        
+        event.currentTarget.classList.add('active');
+        document.getElementById(abaId).classList.add('active');
+    }
+
+    // Controle dos Modais (Nativo)
+    function abrirModal(modalId) {
+        document.getElementById(modalId).classList.add('active');
+    }
+
+    function fecharModal(modalId) {
+        document.getElementById(modalId).classList.remove('active');
+    }
+
+    // Preparar Modal de Baixa
     function abrirModalBaixa(id, tipo, valor, descricao) {
         document.getElementById('baixaContaId').value = id;
         document.getElementById('baixaTipo').value = tipo;
         document.getElementById('baixaDescricao').innerText = descricao;
         
-        let cor = tipo === 'Pagar' ? 'text-danger' : 'text-success';
-        let valFormatado = `R$ ${valor.toFixed(2).replace('.', ',')}`;
-        
         let elemValor = document.getElementById('baixaValor');
-        elemValor.className = `fw-bold mb-4 ${cor}`;
-        elemValor.innerText = valFormatado;
+        elemValor.innerText = `R$ ${valor.toFixed(2).replace('.', ',')}`;
+        elemValor.className = tipo === 'Pagar' ? 'text-danger' : 'text-success';
         
-        document.getElementById('tituloBaixa').innerText = tipo === 'Pagar' ? 'Confirmar Pagamento de Conta' : 'Confirmar Recebimento';
+        document.getElementById('tituloBaixa').innerText = tipo === 'Pagar' ? 'Confirmar Pagamento' : 'Confirmar Recebimento';
         
-        var myModal = new bootstrap.Modal(document.getElementById('modalBaixaConta'));
-        myModal.show();
+        abrirModal('modalBaixaConta');
     }
 
+    // Enviar formulário de baixa via fetch
     document.getElementById('formBaixarConta').addEventListener('submit', function(e) {
         e.preventDefault();
         let formData = new FormData(this);
         
-        fetch('/financeiro/contas/baixar', {
+        fetch("{{ url_for('main.baixar_conta') }}", {
             method: 'POST',
             body: formData
         }).then(resp => resp.json()).then(data => {
