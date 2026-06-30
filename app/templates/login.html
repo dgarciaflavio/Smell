@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Smell CLINIC | SPA</title>
+    
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32x32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon-16x16.png') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='img/site.webmanifest') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #f1f5f9; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .login-card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; max-width: 400px; text-align: center; }
+        .login-card img { height: 80px; margin-bottom: 24px; }
+        .form-control { width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid #e2e8f0; border-radius: 6px; box-sizing: border-box; }
+        .btn-login { width: 100%; background-color: var(--color-smell-primary); color: white; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-login:hover { background-color: #14532d; }
+        .alert { background-color: #fef2f2; color: #b91c1c; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 0.9rem; border: 1px solid #f87171; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <img src="{{ url_for('static', filename='img/LogoSmell.png') }}" alt="Smell Clinic">
+        <h2 style="margin-bottom: 24px; color: #333;">Acesso ao Sistema</h2>
+        
+        {% if erro %}
+        <div class="alert">{{ erro }}</div>
+        {% endif %}
+
+        <form action="{{ url_for('main.login') }}" method="POST">
+            <div style="text-align: left;">
+                <label style="font-size: 0.9rem; color: #475569; font-weight: 600;">CPF</label>
+                <input type="text" name="cpf" class="form-control" placeholder="Apenas números" required>
+            </div>
+            <div style="text-align: left;">
+                <label style="font-size: 0.9rem; color: #475569; font-weight: 600;">Senha</label>
+                <input type="password" name="senha" class="form-control" placeholder="Sua senha de acesso" required>
+            </div>
+            <button type="submit" class="btn-login">Entrar</button>
+        </form>
+    </div>
+</body>
+</html>

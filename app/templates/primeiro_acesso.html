@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="card mx-auto" style="max-width: 400px;">
+        <div class="card-header bg-primary text-white text-center">
+            <h5>Atualização de Segurança</h5>
+        </div>
+        <div class="card-body">
+            <p>Por motivos de segurança, você precisa alterar a senha temporária que recebeu do administrador antes de continuar usando o sistema.</p>
+            <form action="/primeiro_acesso" method="POST">
+                <div class="mb-3">
+                    <label>Nova Senha</label>
+                    <input type="password" name="nova_senha" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label>Confirme a Nova Senha</label>
+                    <input type="password" name="confirma_senha" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-success w-100">Atualizar Senha e Entrar</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

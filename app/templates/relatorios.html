@@ -22,17 +22,59 @@
 <div class="page-header">
     <div>
         <h2 style="color: var(--text-dark); font-weight: 600; margin-bottom: 8px;">Relatórios Gerenciais</h2>
-        <p style="color: var(--text-muted); font-size: 0.9rem;">Histórico de Consumo, Vendas e Extrato de Saídas.</p>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">Consumo, Saídas Financeiras, Histórico e Comissões.</p>
     </div>
 </div>
 
 <div class="estoque-tabs-container">
-    <button class="estoque-tab active" onclick="abrirAba(event, 'aba-vendas')"><i class="fa-solid fa-ranking-star"></i> Top Vendidos</button>
-    <button class="estoque-tab" onclick="abrirAba(event, 'aba-saidas')"><i class="fa-solid fa-arrow-trend-down"></i> Saídas Financeiras</button>
+    <button class="estoque-tab active" onclick="abrirAba(event, 'aba-estoque-inteligente')"><i class="fa-solid fa-boxes-stacked"></i> Estoque Inteligente (PDF)</button>
+    <button class="estoque-tab" onclick="abrirAba(event, 'aba-comissoes')"><i class="fa-solid fa-hand-holding-dollar"></i> Comissões</button>
+    <button class="estoque-tab" onclick="abrirAba(event, 'aba-vendas')"><i class="fa-solid fa-ranking-star"></i> Top Vendidos</button>
+    <button class="estoque-tab" onclick="abrirAba(event, 'aba-saidas')"><i class="fa-solid fa-arrow-trend-down"></i> Extrato de Saídas</button>
     <button class="estoque-tab" onclick="abrirAba(event, 'aba-historico')"><i class="fa-solid fa-clock-rotate-left"></i> Histórico do Item</button>
 </div>
 
-<div id="aba-vendas" class="estoque-content active">
+<!-- ESTOQUE INTELIGENTE (NOVO) -->
+<div id="aba-estoque-inteligente" class="estoque-content active">
+    <div class="agenda-container" style="padding: 24px; text-align: center;">
+        <i class="fa-solid fa-file-pdf" style="font-size: 3rem; color: #ef4444; margin-bottom: 16px;"></i>
+        <h3 style="margin-bottom: 8px;">Relatório de Valorização e CMM</h3>
+        <p style="color: var(--text-muted); margin-bottom: 24px;">Gere o PDF com a valorização financeira atual do seu estoque e o Consumo Médio Mensal (CMM) para saber a durabilidade dos produtos.</p>
+        <a href="{{ url_for('main.imprimir_relatorio_estoque') }}" target="_blank" class="btn btn-primary"><i class="fa-solid fa-print"></i> Visualizar e Imprimir PDF</a>
+    </div>
+</div>
+
+<!-- COMISSÕES (NOVO) -->
+<div id="aba-comissoes" class="estoque-content">
+    <div class="agenda-container" style="padding: 24px;">
+        <h3 style="margin-bottom: 16px;">Apurar e Pagar Comissões</h3>
+        <p style="color: var(--text-muted); margin-bottom: 24px;">Informe o valor total vendido pelo usuário, verifique a porcentagem (pode ser alterada livremente) e clique em Pagar. Um recibo assinado digitalmente será enviado ao WhatsApp do vendedor.</p>
+        
+        <form id="formPagarComissao" style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap;">
+            <div class="form-group" style="margin: 0; min-width: 250px;">
+                <label>Vendedor</label>
+                <select name="usuario_id" class="form-control" required id="selectUsuarioComissao">
+                    <option value="" disabled selected>Selecione...</option>
+                    {% for u in usuarios %}
+                        <option value="{{ u.id }}" data-percentual="{{ u.comissao_percentual }}">{{ u.nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label>Total de Vendas (R$)</label>
+                <input type="number" step="0.01" name="valor_total_vendas" class="form-control" required>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label>Percentual Aplicado (%)</label>
+                <input type="number" step="0.1" name="percentual_aplicado" id="inputPercentual" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="background-color: #10b981; border-color: #10b981;"><i class="fa-solid fa-check-double"></i> Pagar Comissão</button>
+        </form>
+    </div>
+</div>
+
+<!-- VENDAS (MANTIDO) -->
+<div id="aba-vendas" class="estoque-content">
     <div class="agenda-container" style="padding: 24px;">
         <div style="display: flex; gap: 16px; align-items: flex-end; margin-bottom: 24px;">
             <div class="form-group" style="margin: 0; width: 250px;">
@@ -49,6 +91,7 @@
     </div>
 </div>
 
+<!-- EXTRATO DE SAÍDAS (MANTIDO) -->
 <div id="aba-saidas" class="estoque-content">
     <div class="agenda-container" style="padding: 24px;">
         <div style="display: flex; gap: 16px; align-items: flex-end; margin-bottom: 24px; flex-wrap: wrap;">
@@ -68,11 +111,12 @@
             <tbody id="tbodySaidas"><tr><td colspan="4" style="text-align:center;">Selecione o período acima.</td></tr></tbody>
         </table>
         <div id="totalSaidasContainer" style="display: none;" class="resumo-card">
-            <h3 style="margin:0; color: #ef4444;">Total Gasto no Período: R$ <span id="valorTotalSaidas">0.00</span></h3>
+            <h3 style="margin:0; color: #ef4444;">Total Gasto no Período: R$ <span id="valorTotalSaidas">0,00</span></h3>
         </div>
     </div>
 </div>
 
+<!-- HISTÓRICO DO ITEM (RESTAURADO) -->
 <div id="aba-historico" class="estoque-content">
     <div class="agenda-container" style="padding: 24px;">
         <div style="display: flex; gap: 16px; align-items: flex-end; margin-bottom: 24px;">
@@ -105,7 +149,31 @@
         document.getElementById(abaId).classList.add('active');
     }
 
-    // Define mês atual por padrão na aba Vendas
+    // LÓGICA DAS COMISSÕES
+    document.getElementById('selectUsuarioComissao').addEventListener('change', function() {
+        const option = this.options[this.selectedIndex];
+        document.getElementById('inputPercentual').value = option.getAttribute('data-percentual');
+    });
+
+    document.getElementById('formPagarComissao').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const btn = this.querySelector('button[type="submit"]');
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processando...';
+        btn.disabled = true;
+
+        fetch("{{ url_for('main.pagar_comissao') }}", { method: 'POST', body: new FormData(this) })
+        .then(res => res.json())
+        .then(data => {
+            alert(data.mensagem);
+            if(!data.erro) this.reset();
+        })
+        .finally(() => {
+            btn.innerHTML = '<i class="fa-solid fa-check-double"></i> Pagar Comissão';
+            btn.disabled = false;
+        });
+    });
+
+    // LÓGICA DE VENDAS
     const dataAtual = new Date();
     document.getElementById('mesVendas').value = `${dataAtual.getFullYear()}-${String(dataAtual.getMonth()+1).padStart(2, '0')}`;
 
@@ -128,11 +196,12 @@
                 <td><strong># ${index + 1}</strong></td>
                 <td>${row.codigo}</td>
                 <td>${row.descricao}</td>
-                <td><span style="background-color: var(--color-smell-primary); color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;">${row.total_vendido} un.</span></td>
+                <td><span style="background-color: var(--color-smell-primary); color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;">${row.total_vendido.toLocaleString('pt-BR')} un.</span></td>
             </tr>`;
         });
     }
 
+    // LÓGICA DE SAÍDAS
     async function gerarRelatorioSaidas() {
         const ini = document.getElementById('dataInicio').value;
         const fim = document.getElementById('dataFim').value;
@@ -155,18 +224,20 @@
 
         dados.forEach(row => {
             total += row.valor;
+            let valorFormatado = parseFloat(row.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             tbody.innerHTML += `<tr>
-                <td>${row.data_hora_lancamento}</td>
+                <td>${row.data_hora_lancamento_fmt}</td>
                 <td>${row.observacoes}</td>
                 <td>${row.forma_pagamento}</td>
-                <td style="color: #ef4444; font-weight:bold;">R$ ${row.valor.toFixed(2)}</td>
+                <td style="color: #ef4444; font-weight:bold;">R$ ${valorFormatado}</td>
             </tr>`;
         });
         
-        document.getElementById('valorTotalSaidas').innerText = total.toFixed(2);
+        document.getElementById('valorTotalSaidas').innerText = total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         document.getElementById('totalSaidasContainer').style.display = 'inline-block';
     }
 
+    // LÓGICA DO HISTÓRICO DO ITEM (AGORA RESTAURADO E FUNCIONANDO)
     async function gerarRelatorioItem() {
         const codigo = document.getElementById('inputCodigoHistorico').value;
         if(!codigo) return alert("Por favor, selecione ou digite o código de um produto.");
@@ -188,7 +259,7 @@
             if(row.tipo === 'Ajuste') cor = '#f59e0b';
             
             tbody.innerHTML += `<tr>
-                <td>${row.data_hora}</td>
+                <td>${row.data_hora_fmt}</td>
                 <td style="color: ${cor}; font-weight: bold;">${row.tipo}</td>
                 <td>${row.quantidade_movimentada}</td>
                 <td><strong>${row.quantidade_saldo}</strong></td>

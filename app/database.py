@@ -13,6 +13,8 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    # --- TABELAS EXISTENTES ---
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS clientes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,7 +176,6 @@ def init_db():
     );
     ''')
 
-    # NOVAS TABELAS: VITRINE/PDV E GESTÃO FINANCEIRA
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS vendas (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -225,6 +226,35 @@ def init_db():
     count = cursor.execute("SELECT COUNT(*) FROM configuracoes_clinica").fetchone()[0]
     if count == 0:
         cursor.execute("INSERT INTO configuracoes_clinica (hora_abertura, hora_fechamento) VALUES (8, 20)")
+
+    # --- NOVAS TABELAS DE USUÁRIOS E COMISSÕES ---
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        cpf TEXT UNIQUE NOT NULL,
+        senha_hash TEXT NOT NULL,
+        telefone TEXT,
+        nivel_perfil TEXT DEFAULT 'Vendedor',
+        primeiro_acesso INTEGER DEFAULT 1,
+        comissao_percentual REAL DEFAULT 0.0,
+        status TEXT DEFAULT 'Ativo'
+    );
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS historico_comissoes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id INTEGER NOT NULL,
+        data_pagamento TEXT DEFAULT (datetime('now', 'localtime')),
+        valor_pago REAL NOT NULL,
+        percentual_aplicado REAL NOT NULL,
+        hash_assinatura TEXT UNIQUE NOT NULL,
+        status_pagamento TEXT DEFAULT 'Pago',
+        FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
+    );
+    """)
 
     conn.commit()
     conn.close()

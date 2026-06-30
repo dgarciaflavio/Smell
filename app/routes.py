@@ -1,6 +1,8 @@
-from flask import Blueprint, render_template, request, jsonify, current_app, send_from_directory, send_file, render_template_string, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, current_app, send_from_directory, send_file, render_template_string, redirect, url_for, session
 from app.database import get_db_connection
 from app.estoque_database import get_estoque_db_connection
+from app.models import Usuario, Comissao
+from functools import wraps
 import os
 import shutil
 import datetime
@@ -46,6 +48,161 @@ def get_db_absoluto():
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
+
+# ==============================================================
+# HELPERS DE FORMATAÇÃO
+# ==============================================================
+
+def formatar_moeda_br(valor):
+    try:
+        return "{:,.2f}".format(float(valor)).replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "0,00"
+
+@main_bp.app_template_filter('moeda_br')
+def moeda_br_filter(valor):
+    return formatar_moeda_br(valor)
+
+def calcular_idade(data_nascimento_str):
+    try:
+        nasc = datetime.datetime.strptime(data_nascimento_str, '%Y-%m-%d')
+        hoje = datetime.datetime.today()
+        return hoje.year - nasc.year - ((hoje.month, hoje.day) < (nasc.month, nasc.day))
+    except:
+        return ""
+
+def formatar_telefone(telefone_cru):
+    if not telefone_cru:
+        return ""
+    numeros = re.sub(r'\D', '', telefone_cru)
+    if len(numeros) == 8 or len(numeros) == 9: return '5521' + numeros  
+    elif len(numeros) == 10 or len(numeros) == 11: return '55' + numeros    
+    else: return numeros           
+
+def formatar_data_br(data_str):
+    if not data_str:
+        return ""
+    try:
+        if len(data_str) >= 19:
+            dt = datetime.datetime.strptime(data_str[:19], '%Y-%m-%d %H:%M:%S')
+            return dt.strftime('%d/%m/%Y %H:%M')
+        elif len(data_str) >= 10:
+            dt = datetime.datetime.strptime(data_str[:10], '%Y-%m-%d')
+            return dt.strftime('%d/%m/%Y')
+        return data_str
+    except Exception:
+        return data_str
+
+# ==============================================================
+# MIDDLEWARES E SEGURANÇA (LOGIN E PERFIS)
+# ==============================================================
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'usuario_id' not in session:
+            return redirect(url_for('main.login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@main_bp.before_app_request
+def verificar_regras_seguranca():
+    rota_atual = request.endpoint
+    rotas_livres = ['static', 'main.login', 'main.setup_admin', 'main.totem_facial', 
+                    'main.totem_corporal', 'main.totem_pes', 'main.totem_sucesso', 'main.acesso_remoto']
+    
+    if rota_atual in rotas_livres or (rota_atual and rota_atual.startswith('static')):
+        return
+
+    if Usuario.contar_admins() == 0:
+        return redirect(url_for('main.setup_admin'))
+
+    if 'usuario_id' not in session:
+        return redirect(url_for('main.login'))
+
+    if session.get('primeiro_acesso') == 1 and rota_atual != 'main.primeiro_acesso':
+        return redirect(url_for('main.primeiro_acesso'))
+
+# ==============================================================
+# ROTAS DE AUTENTICAÇÃO E CONFIGURAÇÃO INICIAL
+# ==============================================================
+
+@main_bp.route('/setup_admin', methods=['GET', 'POST'])
+def setup_admin():
+    if Usuario.contar_admins() > 0:
+        return redirect(url_for('main.login'))
+
+    if request.method == 'POST':
+        nome = request.form.get('nome')
+        cpf = request.form.get('cpf')
+        senha = request.form.get('senha')
+        
+        sucesso = Usuario.criar_usuario(nome, cpf, senha, "", "Admin", 0.0)
+        if sucesso:
+            conn = get_db_connection()
+            conn.execute("UPDATE usuarios SET primeiro_acesso = 0 WHERE cpf = ?", (cpf,))
+            conn.commit()
+            conn.close()
+            return redirect(url_for('main.login'))
+        else:
+            return "Erro ao criar administrador. Tente novamente."
+            
+    return render_template('setup_admin.html')
+
+@main_bp.route('/login', methods=['GET', 'POST'])
+def login():
+    if 'usuario_id' in session:
+        return redirect(url_for('main.agenda'))
+
+    erro = None
+    if request.method == 'POST':
+        cpf = request.form.get('cpf')
+        senha = request.form.get('senha')
+        usuario = Usuario.autenticar(cpf, senha)
+        
+        if usuario:
+            session['usuario_id'] = usuario['id']
+            session['usuario_nome'] = usuario['nome']
+            session['usuario_perfil'] = usuario['nivel_perfil']
+            session['primeiro_acesso'] = usuario['primeiro_acesso']
+            
+            if usuario['primeiro_acesso'] == 1:
+                return redirect(url_for('main.primeiro_acesso'))
+            return redirect(url_for('main.agenda'))
+        else:
+            erro = "CPF ou Senha incorretos."
+
+    return render_template('login.html', erro=erro)
+
+@main_bp.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('main.login'))
+
+@main_bp.route('/primeiro_acesso', methods=['GET', 'POST'])
+@login_required
+def primeiro_acesso():
+    if session.get('primeiro_acesso') != 1:
+        return redirect(url_for('main.agenda'))
+
+    erro = None
+    if request.method == 'POST':
+        nova_senha = request.form.get('nova_senha')
+        confirma_senha = request.form.get('confirma_senha')
+        
+        if nova_senha == confirma_senha and len(nova_senha) >= 4:
+            Usuario.atualizar_senha(session['usuario_id'], nova_senha)
+            session['primeiro_acesso'] = 0
+            return redirect(url_for('main.agenda'))
+        else:
+            erro = "As senhas não conferem ou são muito curtas."
+
+    return render_template('primeiro_acesso.html', erro=erro)
+
+
+# ==============================================================
+# NOTIFICAÇÕES E BACKGROUND TASKS
+# ==============================================================
 
 def garantir_colunas_notificacao():
     conn = get_db_absoluto()
@@ -207,36 +364,6 @@ def rotina_de_backup_fantasma(pasta_destino):
         time.sleep(3) 
         status_backup_global["em_andamento"] = False
 
-def calcular_idade(data_nascimento_str):
-    try:
-        nasc = datetime.datetime.strptime(data_nascimento_str, '%Y-%m-%d')
-        hoje = datetime.datetime.today()
-        return hoje.year - nasc.year - ((hoje.month, hoje.day) < (nasc.month, nasc.day))
-    except:
-        return ""
-
-def formatar_telefone(telefone_cru):
-    if not telefone_cru:
-        return ""
-    numeros = re.sub(r'\D', '', telefone_cru)
-    if len(numeros) == 8 or len(numeros) == 9: return '5521' + numeros  
-    elif len(numeros) == 10 or len(numeros) == 11: return '55' + numeros    
-    else: return numeros           
-
-def formatar_data_br(data_str):
-    if not data_str:
-        return ""
-    try:
-        if len(data_str) >= 19:
-            dt = datetime.datetime.strptime(data_str[:19], '%Y-%m-%d %H:%M:%S')
-            return dt.strftime('%d/%m/%Y %H:%M')
-        elif len(data_str) >= 10:
-            dt = datetime.datetime.strptime(data_str[:10], '%Y-%m-%d')
-            return dt.strftime('%d/%m/%Y')
-        return data_str
-    except Exception:
-        return data_str
-
 @main_bp.route('/api/sistema/status-backup', methods=['GET'])
 def sistema_status_backup():
     conn = get_db_connection()
@@ -290,6 +417,7 @@ def salvar_pasta_backup():
     return jsonify({"mensagem": "Diretório de segurança salvo com sucesso!"})
 
 @main_bp.route('/', endpoint='agenda')
+@login_required
 def agenda():
     data_hoje = datetime.datetime.now().strftime('%Y-%m-%d')
     data_busca = request.args.get('data')
@@ -319,6 +447,7 @@ def agenda():
     return render_template('agenda.html', profissionais=profissionais, servicos=servicos_lista, data_hoje=data_busca, abertura=abertura, fechamento=fechamento, agendamentos=agendamentos_json)
 
 @main_bp.route('/clientes', endpoint='clientes')
+@login_required
 def clientes():
     cpf_busca = request.args.get('cpf', '').strip()
     conn = get_db_connection()
@@ -328,6 +457,7 @@ def clientes():
     return render_template('clientes.html', clientes=clientes_lista, cpf_busca=cpf_busca)
 
 @main_bp.route('/cliente/<int:cliente_id>/prontuario', endpoint='prontuario')
+@login_required
 def prontuario(cliente_id):
     conn = get_db_connection()
     cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
@@ -375,6 +505,7 @@ def serve_fotos_produtos(filename):
     return send_from_directory(fotos_dir, filename)
 
 @main_bp.route('/api/evolucao/foto', methods=['POST'])
+@login_required
 def salvar_foto():
     cliente_id = request.form.get('cliente_id')
     observacoes = request.form.get('observacoes', '')
@@ -429,6 +560,7 @@ def salvar_foto():
     return jsonify({"mensagem": "Foto salva com sucesso na galeria do paciente!", "erro": False})
 
 @main_bp.route('/api/evolucao/foto/excluir', methods=['POST'])
+@login_required
 def excluir_foto():
     foto_id = request.form.get('foto_id')
     conn = get_db_connection()
@@ -448,6 +580,7 @@ def excluir_foto():
     return jsonify({"mensagem": msg})
 
 @main_bp.route('/api/indicacao/salvar', methods=['POST'])
+@login_required
 def salvar_indicacao():
     cliente_id = request.form.get('cliente_id')
     profissional_id = request.form.get('profissional_id')
@@ -486,6 +619,7 @@ def salvar_indicacao():
     return jsonify({"mensagem": msg})
 
 @main_bp.route('/cliente/<int:cliente_id>/indicacao/<int:indicacao_id>/imprimir', endpoint='imprimir_indicacao')
+@login_required
 def imprimir_indicacao(cliente_id, indicacao_id):
     conn = get_db_connection()
     cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
@@ -499,6 +633,7 @@ def imprimir_indicacao(cliente_id, indicacao_id):
     return render_template('imprimir_indicacao.html', cliente=dict(cliente), indicacao=ind_dict)
 
 @main_bp.route('/cliente/<int:cliente_id>/anamnese/facial', endpoint='anamnese_facial')
+@login_required
 def anamnese_facial(cliente_id):
     conn = get_db_connection()
     cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
@@ -509,6 +644,7 @@ def anamnese_facial(cliente_id):
     return render_template('anamnese_facial.html', cliente=cliente_dict, profissionais=profissionais, modo_cliente=False, modo_avaliacao=False)
 
 @main_bp.route('/cliente/<int:cliente_id>/anamnese/corporal', endpoint='anamnese_corporal')
+@login_required
 def anamnese_corporal(cliente_id):
     conn = get_db_connection()
     cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
@@ -519,6 +655,7 @@ def anamnese_corporal(cliente_id):
     return render_template('anamnese_corporal.html', cliente=cliente_dict, profissionais=profissionais, modo_cliente=False, modo_avaliacao=False)
 
 @main_bp.route('/cliente/<int:cliente_id>/anamnese/pes', endpoint='anamnese_pes')
+@login_required
 def anamnese_pes(cliente_id):
     conn = get_db_connection()
     cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
@@ -529,6 +666,7 @@ def anamnese_pes(cliente_id):
     return render_template('anamnese_pes.html', cliente=cliente_dict, profissionais=profissionais, modo_cliente=False, modo_avaliacao=False)
 
 @main_bp.route('/cliente/<int:cliente_id>/anamnese/facial/<int:anamnese_id>/avaliar', endpoint='avaliar_anamnese_facial')
+@login_required
 def avaliar_anamnese_facial(cliente_id, anamnese_id):
     conn = get_db_connection()
     cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
@@ -541,6 +679,7 @@ def avaliar_anamnese_facial(cliente_id, anamnese_id):
     return render_template('anamnese_facial.html', cliente=cliente_dict, profissionais=profissionais, modo_cliente=False, modo_avaliacao=True, anamnese_obj=dict(anamnese))
 
 @main_bp.route('/cliente/<int:cliente_id>/anamnese/corporal/<int:anamnese_id>/avaliar', endpoint='avaliar_anamnese_corporal')
+@login_required
 def avaliar_anamnese_corporal(cliente_id, anamnese_id):
     conn = get_db_connection()
     cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
@@ -553,6 +692,7 @@ def avaliar_anamnese_corporal(cliente_id, anamnese_id):
     return render_template('anamnese_corporal.html', cliente=cliente_dict, profissionais=profissionais, modo_cliente=False, modo_avaliacao=True, anamnese_obj=dict(anamnese))
 
 @main_bp.route('/cliente/<int:cliente_id>/anamnese/pes/<int:anamnese_id>/avaliar', endpoint='avaliar_anamnese_pes')
+@login_required
 def avaliar_anamnese_pes(cliente_id, anamnese_id):
     conn = get_db_connection()
     cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
@@ -751,6 +891,7 @@ def salvar_anamnese():
     return jsonify({"mensagem": f"Anamnese {tipo} salva com sucesso!", "erro": False})
 
 @main_bp.route('/api/anamnese/atualizar', methods=['POST'])
+@login_required
 def atualizar_anamnese():
     anamnese_id = request.form.get('anamnese_id')
     profissional_nome = request.form.get('profissional_nome')
@@ -762,6 +903,7 @@ def atualizar_anamnese():
     return jsonify({"mensagem": "Avaliação técnica anexada e prontuário atualizado com sucesso!"})
 
 @main_bp.route('/cliente/<int:cliente_id>/anamnese/<int:anamnese_id>/visualizar', endpoint='visualizar_anamnese')
+@login_required
 def visualizar_anamnese(cliente_id, anamnese_id):
     conn = get_db_connection()
     cliente = conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
@@ -782,6 +924,7 @@ def visualizar_anamnese(cliente_id, anamnese_id):
     return render_template('visualizar_anamnese.html', cliente=cliente_dict, anamnese=anamnese_dict, dados=dados_limpos, hash_seguranca=hash_seguranca)
 
 @main_bp.route('/servicos', endpoint='servicos')
+@login_required
 def servicos():
     conn = get_db_connection()
     servicos_lista = conn.execute("SELECT * FROM servicos ORDER BY nome ASC").fetchall()
@@ -789,8 +932,11 @@ def servicos():
     return render_template('servicos.html', servicos=servicos_lista)
 
 @main_bp.route('/financeiro', endpoint='financeiro')
+@login_required
 def financeiro():
-    hoje = datetime.datetime.now().strftime('%Y-%m-%d')
+    data_busca = request.args.get('data')
+    hoje = data_busca if data_busca else datetime.datetime.now().strftime('%Y-%m-%d')
+    
     conn = get_db_connection()
     movimentacoes = conn.execute("SELECT * FROM fluxo_caixa WHERE date(data_hora_lancamento) = ? ORDER BY data_hora_lancamento DESC", (hoje,)).fetchall()
     entradas = sum(m['valor'] for m in movimentacoes if m['tipo'] == 'Entrada')
@@ -803,9 +949,10 @@ def financeiro():
     produtos_json = [dict(p) for p in produtos]
     conn_est.close()
 
-    return render_template('financeiro.html', movimentacoes=movimentacoes, entradas=entradas, saidas=saidas, saldo=saldo, produtos=produtos_json)
+    return render_template('financeiro.html', movimentacoes=movimentacoes, entradas=entradas, saidas=saidas, saldo=saldo, produtos=produtos_json, data_hoje=hoje)
 
 @main_bp.route('/financeiro/venda', methods=['POST'])
+@login_required
 def nova_venda():
     codigo_produto = request.form.get('codigo_produto')
     quantidade = int(request.form.get('quantidade', 1))
@@ -840,14 +987,36 @@ def nova_venda():
     return jsonify({"mensagem": "Venda realizada com sucesso! Estoque e caixa foram atualizados.", "erro": False})
 
 @main_bp.route('/configuracoes', endpoint='configuracoes')
+@login_required
 def configuracoes():
+    if session.get('usuario_perfil') != 'Admin':
+        return redirect(url_for('main.agenda'))
+
     conn = get_db_connection()
     profissionais = conn.execute("SELECT * FROM profissionais ORDER BY nome ASC").fetchall()
     config = conn.execute("SELECT * FROM configuracoes_clinica LIMIT 1").fetchone()
+    usuarios = conn.execute("SELECT id, nome, cpf, telefone, nivel_perfil, comissao_percentual, status FROM usuarios ORDER BY nome ASC").fetchall()
     conn.close()
-    return render_template('configuracoes.html', profissionais=profissionais, config=config)
+    return render_template('configuracoes.html', profissionais=profissionais, config=config, usuarios=usuarios)
+
+@main_bp.route('/configuracoes/usuario/novo', methods=['POST'])
+@login_required
+def novo_usuario():
+    nome = request.form.get('nome')
+    cpf = request.form.get('cpf')
+    senha = request.form.get('senha')
+    telefone = request.form.get('telefone')
+    nivel_perfil = request.form.get('nivel_perfil')
+    comissao = request.form.get('comissao_percentual', 0.0)
+    
+    sucesso = Usuario.criar_usuario(nome, cpf, senha, telefone, nivel_perfil, float(comissao))
+    if sucesso:
+        return jsonify({"erro": False, "mensagem": "Usuário criado com sucesso!"})
+    else:
+        return jsonify({"erro": True, "mensagem": "O CPF já está cadastrado no sistema."})
 
 @main_bp.route('/configuracoes/horario', methods=['POST'])
+@login_required
 def salvar_horario():
     abertura = request.form.get('hora_abertura')
     fechamento = request.form.get('hora_fechamento')
@@ -858,6 +1027,7 @@ def salvar_horario():
     return jsonify({"mensagem": "Horário de funcionamento atualizado com sucesso!"})
 
 @main_bp.route('/agendamento/novo', methods=['POST'])
+@login_required
 def novo_agendamento():
     cliente_input = request.form.get('cliente_nome_cpf', '').strip()
     profissional_id = request.form.get('profissional_id')
@@ -926,8 +1096,7 @@ def novo_agendamento():
         try:
             conn.execute("INSERT INTO anamneses_termos (cliente_id, token_temporario, data_expiracao_token, origem_preenchimento) VALUES (?, ?, ?, 'Link Remoto')", (cliente['id'], token, expiracao))
         except sqlite3.OperationalError:
-            conn.execute('''CREATE TABLE IF NOT EXISTS anamneses_termos (id INTEGER PRIMARY KEY AUTOINCREMENT, cliente_id INTEGER, token_temporario TEXT, data_expiracao_token TEXT, origem_preenchimento TEXT)''')
-            conn.execute("INSERT INTO anamneses_termos (cliente_id, token_temporario, data_expiracao_token, origem_preenchimento) VALUES (?, ?, ?, 'Link Remoto')", (cliente['id'], token, expiracao))
+            pass
 
         link_remoto = f"http://{obter_ip_local()}:5000/remoto/token/{token}"
         msg_agenda_1 = f"Olá, {cliente['nome']}! Seu agendamento de {nome_procedimento} foi confirmado para o dia {inicio_dt.strftime('%d/%m/%Y')} às {inicio_dt.strftime('%H:%M')} na Smell CLINIC | SPA.\n\nPara adiantar seu atendimento, por favor, preencha sua ficha de anamnese clicando neste link (válido por 60 min):"
@@ -943,6 +1112,7 @@ def novo_agendamento():
     return jsonify({"mensagem": f"{texto_sucesso} O lembrete já foi enviado ao WhatsApp do cliente.", "erro": False})
 
 @main_bp.route('/agendamento/atualizar', methods=['POST'])
+@login_required
 def atualizar_agendamento():
     ag_id = request.form.get('agendamento_id')
     novo_status = request.form.get('status')
@@ -966,8 +1136,7 @@ def atualizar_agendamento():
             try:
                 conn.execute("INSERT INTO anamneses_termos (cliente_id, token_temporario, data_expiracao_token, origem_preenchimento) VALUES (?, ?, ?, 'Link Remoto')", (ag['cliente_id'], token, expiracao))
             except sqlite3.OperationalError:
-                conn.execute('''CREATE TABLE IF NOT EXISTS anamneses_termos (id INTEGER PRIMARY KEY AUTOINCREMENT, cliente_id INTEGER, token_temporario TEXT, data_expiracao_token TEXT, origem_preenchimento TEXT)''')
-                conn.execute("INSERT INTO anamneses_termos (cliente_id, token_temporario, data_expiracao_token, origem_preenchimento) VALUES (?, ?, ?, 'Link Remoto')", (ag['cliente_id'], token, expiracao))
+                pass
 
             link_remoto = f"http://{obter_ip_local()}:5000/remoto/token/{token}"
             msg_1 = f"Olá, {ag['cliente_nome']}! Você já está aguardando seu atendimento. Por favor, preencha sua ficha de anamnese clicando no link a seguir (válido por 60 min):"
@@ -986,6 +1155,7 @@ def atualizar_agendamento():
     return jsonify({"mensagem": msg_retorno})
 
 @main_bp.route('/agendamento/remarcar', methods=['POST'])
+@login_required
 def remarcar_agendamento():
     ag_id = request.form.get('agendamento_id')
     nova_data = request.form.get('nova_data')
@@ -1042,6 +1212,7 @@ def remarcar_agendamento():
     return jsonify({"mensagem": "Agendamento remarcado com sucesso! Lembrete enviado ao WhatsApp.", "erro": False})
 
 @main_bp.route('/combo/novo', methods=['POST'])
+@login_required
 def novo_combo():
     nome_combo = request.form.get('nome_combo')
     servicos = request.form.getlist('combo_servicos') 
@@ -1052,18 +1223,6 @@ def novo_combo():
 
     try:
         conn = get_db_connection()
-        conn.execute('''CREATE TABLE IF NOT EXISTS pacotes_combos (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            nome TEXT,
-                            tipo TEXT,
-                            servicos_ids TEXT,
-                            observacoes TEXT,
-                            valor_base REAL,
-                            porcentagem_desconto REAL,
-                            valor_final REAL,
-                            ativo INTEGER DEFAULT 1
-                        )''')
-        
         conn.execute("""
             INSERT INTO pacotes_combos 
             (nome, tipo, servicos_ids, observacoes, valor_base, porcentagem_desconto, valor_final) 
@@ -1077,6 +1236,7 @@ def novo_combo():
         return jsonify({"mensagem": f"Erro interno ao salvar combo: {str(e)}", "erro": True})
 
 @main_bp.route('/pacote/novo', methods=['POST'])
+@login_required
 def novo_pacote():
     nome_pacote = request.form.get('nome_pacote')
     servico_id = request.form.get('servico_id')
@@ -1085,18 +1245,6 @@ def novo_pacote():
 
     try:
         conn = get_db_connection()
-        conn.execute('''CREATE TABLE IF NOT EXISTS pacotes_combos (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            nome TEXT,
-                            tipo TEXT,
-                            servicos_ids TEXT,
-                            observacoes TEXT,
-                            valor_base REAL,
-                            porcentagem_desconto REAL,
-                            valor_final REAL,
-                            ativo INTEGER DEFAULT 1
-                        )''')
-        
         conn.execute("""
             INSERT INTO pacotes_combos 
             (nome, tipo, servicos_ids, observacoes, valor_base, porcentagem_desconto, valor_final) 
@@ -1110,6 +1258,7 @@ def novo_pacote():
         return jsonify({"mensagem": f"Erro interno ao salvar pacote: {str(e)}", "erro": True})
 
 @main_bp.route('/profissional/novo', methods=['POST'])
+@login_required
 def novo_profissional():
     nome = request.form.get('nome')
     especialidade = request.form.get('especialidade')
@@ -1120,6 +1269,7 @@ def novo_profissional():
     return jsonify({"mensagem": "Profissional cadastrado com sucesso! A agenda já foi atualizada com a nova coluna."})
 
 @main_bp.route('/cliente/novo', methods=['POST'])
+@login_required
 def novo_cliente():
     nome = request.form.get('nome')
     cpf = request.form.get('cpf')
@@ -1142,6 +1292,7 @@ def novo_cliente():
     return jsonify({"mensagem": mensagem})
 
 @main_bp.route('/cliente/editar', methods=['POST'])
+@login_required
 def editar_cliente():
     cliente_id = request.form.get('id')
     nome = request.form.get('nome')
@@ -1163,6 +1314,7 @@ def editar_cliente():
     return jsonify({"mensagem": msg})
 
 @main_bp.route('/cliente/excluir', methods=['POST'])
+@login_required
 def excluir_cliente():
     cliente_id = request.form.get('id')
     conn = get_db_connection()
@@ -1177,6 +1329,7 @@ def excluir_cliente():
     return jsonify({"mensagem": msg})
 
 @main_bp.route('/servico/novo', methods=['POST'])
+@login_required
 def novo_servico():
     nome = request.form.get('nome')
     duracao = request.form.get('duracao_minutos')
@@ -1188,6 +1341,7 @@ def novo_servico():
     return jsonify({"mensagem": "Serviço salvo na base de dados! Ele já aparecerá na lista."})
 
 @main_bp.route('/servico/editar', methods=['POST'])
+@login_required
 def editar_servico():
     servico_id = request.form.get('id')
     nome = request.form.get('nome')
@@ -1200,6 +1354,7 @@ def editar_servico():
     return jsonify({"mensagem": "Serviço atualizado com sucesso na tabela!"})
 
 @main_bp.route('/servico/excluir', methods=['POST'])
+@login_required
 def excluir_servico():
     servico_id = request.form.get('id')
     conn = get_db_connection()
@@ -1214,6 +1369,7 @@ def excluir_servico():
     return jsonify({"mensagem": msg})
 
 @main_bp.route('/financeiro/despesa', methods=['POST'])
+@login_required
 def nova_despesa():
     observacoes = request.form.get('observacoes')
     valor = request.form.get('valor')
@@ -1225,10 +1381,14 @@ def nova_despesa():
     return jsonify({"mensagem": "Despesa registrada. O saldo do caixa foi atualizado!"})
 
 @main_bp.route('/financeiro/fechar', methods=['POST'])
+@login_required
 def fechar_caixa():
-    return jsonify({"mensagem": "Caixa do dia fechado com sucesso! Relatório gerado."})
+    data_retroativa = request.form.get('data_retroativa')
+    data_fechamento = data_retroativa if data_retroativa else datetime.datetime.now().strftime('%d/%m/%Y')
+    return jsonify({"mensagem": f"Caixa do dia {data_fechamento} fechado com sucesso! Relatório gerado (Visual)."})
 
 @main_bp.route('/api/agendamentos/mes', methods=['GET'])
+@login_required
 def agendamentos_mes():
     mes_ano = request.args.get('mes_ano') 
     conn = get_db_connection()
@@ -1238,6 +1398,7 @@ def agendamentos_mes():
     return jsonify(resultado)
 
 @main_bp.route('/whatsapp/iniciar-motor', methods=['POST'])
+@login_required
 def iniciar_motor_whatsapp():
     global bot_process
     
@@ -1262,6 +1423,7 @@ def iniciar_motor_whatsapp():
         return jsonify({"status": "aviso", "mensagem": "O motor já está em execução."})
 
 @main_bp.route('/whatsapp/status', methods=['GET'])
+@login_required
 def whatsapp_status():
     status_path = os.path.join(get_base_dir(), 'whatsapp_status.txt')
     if os.path.exists(status_path):
@@ -1271,6 +1433,7 @@ def whatsapp_status():
     return jsonify({"conectado": False, "status_texto": "DESLIGADO"})
 
 @main_bp.route('/whatsapp/qr', methods=['GET'])
+@login_required
 def whatsapp_qr():
     import base64
     qr_path = os.path.join(get_base_dir(), 'qr_code.png')
@@ -1279,6 +1442,7 @@ def whatsapp_qr():
     return jsonify({"status": "aguardando", "mensagem": "Aguardando o motor Node.js..."})
 
 @main_bp.route('/configuracoes/selecionar-pasta', methods=['GET'])
+@login_required
 def selecionar_pasta():
     import tkinter as tk
     from tkinter import filedialog
@@ -1290,6 +1454,7 @@ def selecionar_pasta():
     return jsonify({"pasta": pasta})
 
 @main_bp.route('/configuracoes/backup', methods=['POST'])
+@login_required
 def executar_backup():
     pasta_destino = request.form.get('pasta_destino')
     if not pasta_destino or not os.path.exists(pasta_destino): return jsonify({"mensagem": "Erro: A pasta destino selecionada não existe."})
@@ -1308,6 +1473,7 @@ def executar_backup():
     except Exception as e: return jsonify({"mensagem": f"Erro crítico ao realizar backup: {e}"})
 
 @main_bp.route('/estoque', endpoint='estoque')
+@login_required
 def estoque():
     conn = get_estoque_db_connection()
     produtos = conn.execute("SELECT p.*, c.nome as categoria_nome FROM produtos p LEFT JOIN categorias c ON p.categoria_id = c.id WHERE p.status = 'Ativo' ORDER BY p.descricao ASC").fetchall()
@@ -1324,6 +1490,7 @@ def gerar_codigo_produto_unico():
             return codigo
 
 @main_bp.route('/estoque/produto/novo', methods=['POST'])
+@login_required
 def novo_produto():
     descricao = request.form.get('descricao')
     categoria_nome = request.form.get('categoria', '').strip()
@@ -1360,6 +1527,7 @@ def novo_produto():
     return jsonify({"mensagem": f"Produto cadastrado com sucesso! Código Gerado: {codigo}", "codigo": codigo})
 
 @main_bp.route('/estoque/produto/editar', methods=['POST'])
+@login_required
 def editar_produto():
     codigo = request.form.get('codigo')
     nova_descricao = request.form.get('descricao')
@@ -1423,6 +1591,7 @@ def editar_produto():
     return jsonify({"mensagem": "Produto atualizado com sucesso! O histórico foi registrado.", "erro": False})
 
 @main_bp.route('/estoque/produto/inativar', methods=['POST'])
+@login_required
 def inativar_produto():
     codigo = request.form.get('codigo')
     conn = get_estoque_db_connection()
@@ -1432,6 +1601,7 @@ def inativar_produto():
     return jsonify({"mensagem": "Produto inativado com sucesso."})
 
 @main_bp.route('/estoque/produto/ajustar', methods=['POST'])
+@login_required
 def ajustar_estoque_unitario():
     codigo = int(request.form.get('codigo'))
     nova_quantidade = int(request.form.get('quantidade', 0))
@@ -1451,6 +1621,7 @@ def ajustar_estoque_unitario():
     return jsonify({"mensagem": "Estoque do produto atualizado com sucesso."})
 
 @main_bp.route('/estoque/inventario/exportar', methods=['GET'])
+@login_required
 def exportar_inventario():
     conn = get_estoque_db_connection()
     produtos = conn.execute("SELECT codigo, descricao, quantidade FROM produtos WHERE status = 'Ativo' ORDER BY descricao ASC").fetchall()
@@ -1464,6 +1635,7 @@ def exportar_inventario():
     return send_file(output, download_name="ficha_inventario.xlsx", as_attachment=True, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 @main_bp.route('/estoque/inventario/importar', methods=['POST'])
+@login_required
 def importar_inventario():
     file = request.files.get('file')
     if not file or file.filename == '': return jsonify({'erro': True, 'mensagem': 'Nenhum arquivo anexado.'})
@@ -1490,13 +1662,137 @@ def importar_inventario():
         return jsonify({'erro': True, 'mensagem': f'Falha ao processar planilha: {str(e)}'})
 
 @main_bp.route('/relatorios', endpoint='relatorios')
+@login_required
 def relatorios():
     conn = get_estoque_db_connection()
     produtos = conn.execute("SELECT codigo, descricao FROM produtos WHERE status = 'Ativo' ORDER BY descricao ASC").fetchall()
     conn.close()
-    return render_template('relatorios.html', produtos=produtos)
+    
+    conn_db = get_db_connection()
+    usuarios = conn_db.execute("SELECT id, nome, comissao_percentual FROM usuarios WHERE status = 'Ativo'").fetchall()
+    conn_db.close()
+    
+    return render_template('relatorios.html', produtos=produtos, usuarios=usuarios)
+
+@main_bp.route('/relatorios/estoque/imprimir', methods=['GET'])
+@login_required
+def imprimir_relatorio_estoque():
+    """Gera um HTML otimizado para impressão (PDF) do relatório inteligente de estoque (CMM, Valorização)"""
+    conn = get_estoque_db_connection()
+    
+    # Produtos Ativos
+    produtos = conn.execute("SELECT codigo, descricao, quantidade, valor_unitario FROM produtos WHERE status = 'Ativo' ORDER BY descricao ASC").fetchall()
+    
+    # Data de 90 dias atrás para o CMM
+    data_90_dias = (datetime.datetime.now() - datetime.timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S')
+    
+    relatorio = []
+    valorizacao_total = 0
+    
+    for p in produtos:
+        # Busca vendas nos últimos 90 dias
+        vendas = conn.execute("""
+            SELECT SUM(quantidade_movimentada) as total_vendido 
+            FROM historico_estoque 
+            WHERE produto_codigo = ? AND tipo = 'Venda' AND data_hora >= ?
+        """, (p['codigo'], data_90_dias)).fetchone()
+        
+        total_vendido = vendas['total_vendido'] if vendas['total_vendido'] else 0
+        cmm = round(total_vendido / 3.0, 2)
+        
+        valorizacao = p['quantidade'] * p['valor_unitario']
+        valorizacao_total += valorizacao
+        
+        dias_estoque = "Sem saída recente"
+        if cmm > 0:
+            consumo_diario = cmm / 30.0
+            dias_estoque = f"{round(p['quantidade'] / consumo_diario)} dias"
+            
+        relatorio.append({
+            'codigo': p['codigo'],
+            'descricao': p['descricao'],
+            'quantidade': p['quantidade'],
+            'valor_unitario': f"R$ {formatar_moeda_br(p['valor_unitario'])}",
+            'valorizacao': f"R$ {formatar_moeda_br(valorizacao)}",
+            'cmm': str(cmm).replace('.', ','),
+            'dias_estoque': dias_estoque
+        })
+        
+    conn.close()
+    
+    html_template = """
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <title>Relatório de Estoque - PDF</title>
+        <style>
+            body { font-family: 'Helvetica', 'Arial', sans-serif; color: #333; margin: 0; padding: 20px; }
+            h1 { color: #0d9488; text-align: center; border-bottom: 2px solid #0d9488; padding-bottom: 10px; }
+            .header-info { display: flex; justify-content: space-between; margin-bottom: 30px; font-size: 14px; color: #666; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f3f4f6; color: #374151; font-weight: bold; }
+            .total-row { font-weight: bold; background-color: #e0f2fe; }
+            @media print {
+                @page { margin: 1cm; }
+                button { display: none; }
+            }
+            .print-btn { background-color: #0d9488; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-weight: bold; float: right; margin-bottom: 20px; }
+        </style>
+    </head>
+    <body>
+        <button class="print-btn" onclick="window.print()">🖨️ Salvar como PDF / Imprimir</button>
+        <h1>Relatório Inteligente de Estoque</h1>
+        <div class="header-info">
+            <span><strong>Clínica:</strong> Smell CLINIC | SPA</span>
+            <span><strong>Data da Geração:</strong> {{ data_hoje }}</span>
+        </div>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Produto</th>
+                    <th>Qtd. Atual</th>
+                    <th>Custo Un.</th>
+                    <th>Valorização (R$)</th>
+                    <th>CMM (Mês)</th>
+                    <th>Durabilidade Prevista</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in relatorio %}
+                <tr>
+                    <td>{{ item.codigo }}</td>
+                    <td>{{ item.descricao }}</td>
+                    <td style="text-align: center;">{{ item.quantidade }}</td>
+                    <td>{{ item.valor_unitario }}</td>
+                    <td>{{ item.valorizacao }}</td>
+                    <td style="text-align: center;">{{ item.cmm }}</td>
+                    <td>{{ item.dias_estoque }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="total-row">
+                    <td colspan="4" style="text-align: right;">VALORIZAÇÃO TOTAL DO ESTOQUE:</td>
+                    <td colspan="3" style="color: #0d9488; font-size: 14px;">R$ {{ valorizacao_total|moeda_br }}</td>
+                </tr>
+            </tfoot>
+        </table>
+        
+        <div style="margin-top: 40px; font-size: 11px; color: #999; text-align: center;">
+            * CMM: Consumo Médio Mensal (baseado nos últimos 90 dias).<br>
+            * Durabilidade Prevista: Estimativa de dias que o estoque durará mantendo o ritmo do CMM.
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(html_template, relatorio=relatorio, valorizacao_total=valorizacao_total, data_hoje=datetime.datetime.now().strftime('%d/%m/%Y %H:%M'))
 
 @main_bp.route('/api/relatorios/vendas', methods=['GET'])
+@login_required
 def relatorio_vendas():
     mes = request.args.get('mes') 
     conn = get_estoque_db_connection()
@@ -1514,6 +1810,7 @@ def relatorio_vendas():
     return jsonify([dict(r) for r in rows])
 
 @main_bp.route('/api/relatorios/saidas', methods=['GET'])
+@login_required
 def relatorio_saidas():
     inicio = request.args.get('inicio')
     fim = request.args.get('fim')
@@ -1536,6 +1833,7 @@ def relatorio_saidas():
     return jsonify(formatted_rows)
 
 @main_bp.route('/api/relatorios/historico-estoque', methods=['GET'])
+@login_required
 def relatorio_historico():
     codigo = request.args.get('codigo')
     conn = get_estoque_db_connection()
@@ -1556,11 +1854,54 @@ def relatorio_historico():
     conn.close()
     return jsonify(formatted_rows)
 
+@main_bp.route('/api/comissoes/pagar', methods=['POST'])
+@login_required
+def pagar_comissao():
+    # Bloqueio simples de acesso se não for Admin
+    if session.get('usuario_perfil') != 'Admin':
+        return jsonify({"erro": True, "mensagem": "Acesso Negado."})
+        
+    usuario_id = request.form.get('usuario_id')
+    valor_total = float(request.form.get('valor_total_vendas', 0))
+    percentual_aplicado = float(request.form.get('percentual_aplicado', 0))
+    
+    if valor_total <= 0:
+        return jsonify({"erro": True, "mensagem": "Não há vendas válidas para pagar comissão."})
+        
+    # Registra no BD e gera a Assinatura (Hash)
+    recibo = Comissao.registrar_pagamento(usuario_id, valor_total, percentual_aplicado)
+    
+    # Envia o recibo digital pelo WhatsApp via Bot
+    conn = get_db_connection()
+    usuario = conn.execute("SELECT nome, telefone FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
+    
+    if usuario and usuario['telefone']:
+        msg_whatsapp = (
+            f"🧾 *RECIBO DIGITAL DE COMISSÃO*\n\n"
+            f"Olá, {usuario['nome']}!\n"
+            f"O pagamento da sua comissão foi processado.\n\n"
+            f"🔸 *Base de Cálculo:* R$ {formatar_moeda_br(valor_total)}\n"
+            f"🔸 *Percentual Aplicado:* {str(percentual_aplicado).replace('.', ',')}%\n"
+            f"💰 *VALOR RECEBIDO:* R$ {formatar_moeda_br(recibo['valor_pago'])}\n\n"
+            f"🕒 *Data/Hora:* {recibo['data']}\n"
+            f"🔐 *Assinatura Eletrônica (Hash):*\n{recibo['hash_assinatura']}"
+        )
+        conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (usuario['telefone'], msg_whatsapp))
+        conn.commit()
+        
+    conn.close()
+    
+    return jsonify({
+        "erro": False, 
+        "mensagem": "Comissão paga e assinada digitalmente com sucesso! Recibo enviado via WhatsApp."
+    })
+
 # ==============================================================
-# NOVAS ROTAS - PDV / VITRINE E GESTÃO FINANCEIRA
+# PDV / VITRINE E GESTÃO FINANCEIRA
 # ==============================================================
 
 @main_bp.route('/pdv', endpoint='pdv_vitrine')
+@login_required
 def pdv_vitrine():
     conn_est = get_estoque_db_connection()
     produtos = conn_est.execute("SELECT * FROM produtos WHERE status = 'Ativo' AND quantidade > 0 ORDER BY descricao ASC").fetchall()
@@ -1569,11 +1910,16 @@ def pdv_vitrine():
     conn = get_db_connection()
     clientes = conn.execute("SELECT id, nome FROM clientes ORDER BY nome ASC").fetchall()
     profissionais = conn.execute("SELECT id, nome FROM profissionais WHERE status = 'Ativo' ORDER BY nome ASC").fetchall()
+    
+    # Busca os vendedores que recebem comissão
+    vendedores = conn.execute("SELECT id, nome FROM usuarios WHERE status = 'Ativo'").fetchall()
+    
     conn.close()
     
-    return render_template('vitrine.html', produtos=produtos, clientes=clientes, profissionais=profissionais)
+    return render_template('vitrine.html', produtos=produtos, clientes=clientes, profissionais=profissionais, vendedores=vendedores)
 
 @main_bp.route('/pdv/finalizar', methods=['POST'])
+@login_required
 def pdv_finalizar():
     dados = request.get_json()
     cliente_id = dados.get('cliente_id')
@@ -1590,6 +1936,7 @@ def pdv_finalizar():
     conn_est = get_estoque_db_connection()
     
     cursor = conn.cursor()
+    # O campo vendedor_id salva o ID do usuário (sistema de perfis/comissão)
     cursor.execute("INSERT INTO vendas (cliente_id, vendedor_id, valor_total, forma_pagamento) VALUES (?, ?, ?, ?)", 
                    (cliente_id if cliente_id != '0' else None, vendedor_id if vendedor_id != '0' else None, valor_total, pagamento))
     venda_id = cursor.lastrowid
@@ -1620,15 +1967,17 @@ def pdv_finalizar():
     return jsonify({"erro": False, "venda_id": venda_id})
 
 @main_bp.route('/pdv/imprimir/<int:venda_id>')
+@login_required
 def pdv_imprimir(venda_id):
     conn = get_db_connection()
+    # Modificado para puxar o nome do vendedor da tabela `usuarios`
     venda_row = conn.execute("""
         SELECT v.*, 
                c.nome as cliente_nome, 
-               p.nome as vendedor_nome 
+               u.nome as vendedor_nome 
         FROM vendas v 
         LEFT JOIN clientes c ON v.cliente_id = c.id 
-        LEFT JOIN profissionais p ON v.vendedor_id = p.id 
+        LEFT JOIN usuarios u ON v.vendedor_id = u.id 
         WHERE v.id = ?
     """, (venda_id,)).fetchone()
     
@@ -1650,6 +1999,7 @@ def pdv_imprimir(venda_id):
     return render_template('cupom_venda.html', venda=venda, itens=itens)
 
 @main_bp.route('/financeiro/contas', endpoint='gestao_financeira')
+@login_required
 def gestao_financeira():
     conn = get_db_connection()
     agora = datetime.datetime.now()
@@ -1688,6 +2038,7 @@ def gestao_financeira():
     return render_template('gestao_financeira.html', contas_pagar=contas_pagar, contas_receber=contas_receber, resumo=resumo)
 
 @main_bp.route('/financeiro/contas/salvar', methods=['POST'])
+@login_required
 def salvar_conta():
     tipo = request.form.get('tipo_conta')
     descricao = request.form.get('descricao')
@@ -1702,6 +2053,7 @@ def salvar_conta():
     return redirect(url_for('main.gestao_financeira'))
 
 @main_bp.route('/financeiro/contas/baixar', methods=['POST'])
+@login_required
 def baixar_conta():
     conta_id = request.form.get('conta_id')
     tipo = request.form.get('tipo')

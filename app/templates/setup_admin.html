@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="alert alert-warning text-center">
+        <h4>Configuração Inicial Obrigatória</h4>
+        <p>É necessário cadastrar o usuário Administrador Master.</p>
+    </div>
+    
+    <div class="card mx-auto" style="max-width: 500px;">
+        <div class="card-body">
+            <form action="/setup_admin" method="POST">
+                <div class="mb-3">
+                    <label>Nome Completo</label>
+                    <input type="text" name="nome" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label>CPF (Será seu login)</label>
+                    <input type="text" name="cpf" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label>Senha Segura</label>
+                    <input type="password" name="senha" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Criar Administrador</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

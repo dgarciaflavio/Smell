@@ -103,7 +103,7 @@ class WhatsappBotWorker:
                         time.sleep(3) # Aguarda a mensagem subir para a tela
                         cursor.execute("UPDATE fila_whatsapp SET status = 'Enviado' WHERE id = ?", (msg_id,))
                         conn.commit()
-                        print(f"[{datetime.datetime.now()}] Mensagem enviada com sucesso para {num_formatado}!")
+                        print(f"[{datetime.datetime.now()}] Mensagem/Recibo enviado com sucesso para {num_formatado}!")
                         enviou = True
                         break
                         

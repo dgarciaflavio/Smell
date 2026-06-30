@@ -99,9 +99,9 @@
                 <td class="col-qtd">{{ item.quantidade }}</td>
                 <td class="col-desc">
                     {{ item.codigo }} | {{ item.descricao }}<br>
-                    <span style="font-size: 9px; color: #333;">UN: R$ {{ "%.2f"|format(item.valor_unitario) }}</span>
+                    <span style="font-size: 9px; color: #333;">UN: R$ {{ item.valor_unitario|moeda_br }}</span>
                 </td>
-                <td class="col-vl">R$ {{ "%.2f"|format(item.total_item) }}</td>
+                <td class="col-vl">R$ {{ item.total_item|moeda_br }}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -113,11 +113,11 @@
         <p class="bold text-center" style="margin-bottom: 5px;">PAGAMENTO</p>
         <div class="total-row">
             <span>Valor da venda</span>
-            <span>R$ {{ "%.2f"|format(venda.valor_total) }}</span>
+            <span>R$ {{ venda.valor_total|moeda_br }}</span>
         </div>
         <div class="total-row grand-total">
             <span>Valor total</span>
-            <span>R$ {{ "%.2f"|format(venda.valor_total) }}</span>
+            <span>R$ {{ venda.valor_total|moeda_br }}</span>
         </div>
     </div>
 
@@ -127,7 +127,7 @@
         <p class="bold" style="margin-bottom: 3px;">TIPO DE PAGAMENTO:</p>
         <div class="total-row">
             <span>{{ venda.forma_pagamento }}</span>
-            <span class="bold">R$ {{ "%.2f"|format(venda.valor_total) }}</span>
+            <span class="bold">R$ {{ venda.valor_total|moeda_br }}</span>
         </div>
     </div>
 

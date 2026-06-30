@@ -322,15 +322,15 @@
     <div class="fin-resumo-grid">
         <div class="fin-card pagar">
             <div class="fin-card-title"><i class="fas fa-arrow-down text-danger"></i> A Pagar (Próx. 7 dias)</div>
-            <p class="fin-card-value text-danger">R$ {{ "%.2f"|format(resumo.total_pagar) }}</p>
+            <p class="fin-card-value text-danger">R$ {{ resumo.total_pagar|moeda_br }}</p>
         </div>
         <div class="fin-card receber">
             <div class="fin-card-title"><i class="fas fa-arrow-up text-success"></i> A Receber (Próx. 7 dias)</div>
-            <p class="fin-card-value text-success">R$ {{ "%.2f"|format(resumo.total_receber) }}</p>
+            <p class="fin-card-value text-success">R$ {{ resumo.total_receber|moeda_br }}</p>
         </div>
         <div class="fin-card saldo">
             <div class="fin-card-title"><i class="fas fa-wallet"></i> Saldo Atual Caixa Geral</div>
-            <p class="fin-card-value">R$ {{ "%.2f"|format(resumo.saldo_geral) }}</p>
+            <p class="fin-card-value">R$ {{ resumo.saldo_geral|moeda_br }}</p>
         </div>
     </div>
 
@@ -370,7 +370,7 @@
                                 {% endif %}
                             </td>
                             <td>{{ conta.descricao }}</td>
-                            <td><strong class="text-danger">R$ {{ "%.2f"|format(conta.valor) }}</strong></td>
+                            <td><strong class="text-danger">R$ {{ conta.valor|moeda_br }}</strong></td>
                             <td>
                                 {% if conta.status == 'Pendente' %}
                                     <span class="fin-badge badge-pendente">Pendente</span>
@@ -420,7 +420,7 @@
                                 {% endif %}
                             </td>
                             <td>{{ conta.descricao }}</td>
-                            <td><strong class="text-success">R$ {{ "%.2f"|format(conta.valor) }}</strong></td>
+                            <td><strong class="text-success">R$ {{ conta.valor|moeda_br }}</strong></td>
                             <td>
                                 {% if conta.status == 'Pendente' %}
                                     <span class="fin-badge badge-pendente">Aguardando</span>
@@ -550,7 +550,7 @@
         document.getElementById('baixaDescricao').innerText = descricao;
         
         let elemValor = document.getElementById('baixaValor');
-        elemValor.innerText = `R$ ${valor.toFixed(2).replace('.', ',')}`;
+        elemValor.innerText = `R$ ${parseFloat(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         elemValor.className = tipo === 'Pagar' ? 'text-danger' : 'text-success';
         
         document.getElementById('tituloBaixa').innerText = tipo === 'Pagar' ? 'Confirmar Pagamento' : 'Confirmar Recebimento';

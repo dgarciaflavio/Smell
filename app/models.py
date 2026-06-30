@@ -1,11 +1,11 @@
 from app.database import get_db_connection
 import datetime
 import hashlib
+import sqlite3
 
 class Cliente:
     @staticmethod
     def cadastrar(nome, cpf, telefone, data_nascimento):
-        """Cadastra um novo cliente no sistema local."""
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
@@ -22,7 +22,6 @@ class Cliente:
 
     @staticmethod
     def buscar_por_cpf(cpf):
-        """Busca um cliente específico usando o CPF para confirmação de presença."""
         conn = get_db_connection()
         row = conn.execute("SELECT * FROM clientes WHERE cpf = ?", (cpf,)).fetchone()
         conn.close()
@@ -30,7 +29,6 @@ class Cliente:
 
     @staticmethod
     def obter_por_id(cliente_id):
-        """Retorna os dados cadastrais de um cliente pelo ID."""
         conn = get_db_connection()
         row = conn.execute("SELECT * FROM clientes WHERE id = ?", (cliente_id,)).fetchone()
         conn.close()
@@ -40,7 +38,6 @@ class Cliente:
 class Profissional:
     @staticmethod
     def listar_ativos():
-        """Retorna todos os profissionais ativos para montar as colunas da agenda."""
         conn = get_db_connection()
         rows = conn.execute("SELECT * FROM profissionais WHERE status = 'Ativo'").fetchall()
         conn.close()
@@ -50,7 +47,6 @@ class Profissional:
 class Servico:
     @staticmethod
     def obter_por_id(servico_id):
-        """Retorna os dados de um serviço, incluindo tempo de duração e preço padrão."""
         conn = get_db_connection()
         row = conn.execute("SELECT * FROM servicos WHERE id = ?", (servico_id,)).fetchone()
         conn.close()
@@ -60,12 +56,7 @@ class Servico:
 class Agendamento:
     @staticmethod
     def verificar_conflito_sala(data_hora_inicio, data_hora_fim_previsto):
-        """
-        Regra da Sala Única: Verifica se já existe qualquer atendimento em andamento
-        no período solicitado, independentemente do profissional.
-        """
         conn = get_db_connection()
-        # Procura por sobreposição de horários
         conflito = conn.execute("""
             SELECT id FROM agendamentos 
             WHERE status NOT IN ('Cancelado')
@@ -80,11 +71,9 @@ class Agendamento:
 
     @staticmethod
     def criar(cliente_id, profissional_id, servico_id, data_hora_inicio, observacoes=None):
-        """Gera um agendamento calculando automaticamente o horário de término."""
-        servico = Servico.get_by_id(servico_id)
-        if not ...: pass # Proteção contra serviço inexistente
+        servico = Servico.obter_por_id(servico_id)
+        if not servico: return None
         
-        # Converte string para datetime para calcular a duração padrão do serviço
         inicio = datetime.datetime.strptime(data_hora_inicio, "%Y-%m-%d %H:%M:%S")
         fim = inicio + datetime.timedelta(minutes=servico['duracao_minutos'])
         data_hora_fim_previsto = fim.strftime("%Y-%m-%d %H:%M:%S")
@@ -92,7 +81,7 @@ class Agendamento:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO agendamentos (cliente_id, profesional_id, servico_id, data_hora_inicio, data_hora_fim_previsto, status, observacoes)
+            INSERT INTO agendamentos (cliente_id, profissional_id, servico_id, data_hora_inicio, data_hora_fim_previsto, status, observacoes)
             VALUES (?, ?, ?, ?, ?, 'Agendado', ?)
         """, (cliente_id, profissional_id, servico_id, data_hora_inicio, data_hora_fim_previsto, observacoes))
         
@@ -103,7 +92,6 @@ class Agendamento:
 
     @staticmethod
     def atualizar_status(agendamento_id, novo_status):
-        """Atualiza o estado do atendimento (Ex: Confirmado, Presente, Em Atendimento, Concluído)."""
         conn = get_db_connection()
         conn.execute("UPDATE agendamentos SET status = ? WHERE id = ?", (novo_status, agendamento_id))
         conn.commit()
@@ -111,7 +99,6 @@ class Agendamento:
 
     @staticmethod
     def mover_por_atraso(agendamento_id, nova_data_hora_inicio):
-        """Movimentação Unilateral: Desloca apenas o cliente atrasado na linha do tempo."""
         conn = get_db_connection()
         agendamento = conn.execute("SELECT * FROM agendamentos WHERE id = ?", (agendamento_id,)).fetchone()
         servico = conn.execute("SELECT duracao_minutos FROM servicos WHERE id = ?", (agendamento['servico_id'],)).fetchone()
@@ -132,7 +119,6 @@ class Agendamento:
 class AnamneseTermo:
     @staticmethod
     def gerar_token_temporario(cliente_id, token, minutos_validade=30):
-        """Cria o registro inicial do token temporário com prazo de expiração para o WhatsApp."""
         limite = datetime.datetime.now() + datetime.timedelta(minutes=minutos_validade)
         expiracao = limite.strftime("%Y-%m-%d %H:%M:%S")
         
@@ -146,13 +132,7 @@ class AnamneseTermo:
 
     @staticmethod
     def salvar_assinatura_eletronica(cliente_id, texto_termo, img1, img2, img3, origem, funcionario=None, ip=None):
-        """
-        Salva as 3 rubricas e gera o Hash SHA-256 combinando os dados primários do
-        termo para conferência de segurança jurídica antiviolação.
-        """
         data_hora_atual = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Construção da semente do Hash com dados do termo e das assinaturas
         string_semente = f"{cliente_id}_{texto_termo}_{img1[:50]}_{img2[:50]}_{img3[:50]}_{data_hora_atual}"
         hash_sha256 = hashlib.sha256(string_semente.encode('utf-8')).hexdigest()
 
@@ -171,7 +151,6 @@ class AnamneseTermo:
 class EvolucaoFoto:
     @staticmethod
     def vincular_foto(cliente_id, agendamento_id, caminho_relativo, observacoes=None):
-        """Registra a referência do arquivo de imagem salvo no diretório local smell_fotos."""
         conn = get_db_connection()
         conn.execute("""
             INSERT INTO evolucao_fotos (cliente_id, agendamento_id, caminho_arquivo, observacoes)
@@ -184,7 +163,6 @@ class EvolucaoFoto:
 class FluxoCaixa:
     @staticmethod
     def registrar_entrada(agendamento_id, valor, forma_pagamento, observacoes=None):
-        """Registra a baixa financeira do atendimento diretamente no fluxo de caixa diário."""
         conn = get_db_connection()
         conn.execute("""
             INSERT INTO fluxo_caixa (agendamento_id, tipo, valor, forma_pagamento, observacoes)
@@ -197,7 +175,6 @@ class FluxoCaixa:
 class FilaWhatsapp:
     @staticmethod
     def adicionar_a_fila(numero, mensagem):
-        """Enfileira uma mensagem automática para disparo em background pelo navegador fantasma."""
         conn = get_db_connection()
         conn.execute("""
             INSERT INTO fila_whatsapp (numero_destino, mensagem, status)
@@ -205,3 +182,82 @@ class FilaWhatsapp:
         """, (numero, mensagem))
         conn.commit()
         conn.close()
+
+
+# --- NOVOS MODELOS: GESTÃO DE USUÁRIOS E COMISSÕES ---
+
+class Usuario:
+    @staticmethod
+    def hash_senha(senha):
+        return hashlib.sha256(senha.encode('utf-8')).hexdigest()
+
+    @staticmethod
+    def autenticar(cpf, senha):
+        conn = get_db_connection()
+        senha_criptografada = Usuario.hash_senha(senha)
+        user = conn.execute("SELECT * FROM usuarios WHERE cpf = ? AND senha_hash = ? AND status = 'Ativo'", (cpf, senha_criptografada)).fetchone()
+        conn.close()
+        return user
+
+    @staticmethod
+    def criar_usuario(nome, cpf, senha, telefone, nivel_perfil, comissao_percentual=0.0):
+        conn = get_db_connection()
+        try:
+            senha_criptografada = Usuario.hash_senha(senha)
+            conn.execute("""
+                INSERT INTO usuarios (nome, cpf, senha_hash, telefone, nivel_perfil, comissao_percentual, primeiro_acesso)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+            """, (nome, cpf, senha_criptografada, telefone, nivel_perfil, comissao_percentual))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+        finally:
+            conn.close()
+
+    @staticmethod
+    def atualizar_senha(usuario_id, nova_senha):
+        conn = get_db_connection()
+        senha_criptografada = Usuario.hash_senha(nova_senha)
+        conn.execute("UPDATE usuarios SET senha_hash = ?, primeiro_acesso = 0 WHERE id = ?", (senha_criptografada, usuario_id))
+        conn.commit()
+        conn.close()
+        
+    @staticmethod
+    def contar_admins():
+        conn = get_db_connection()
+        qtd = conn.execute("SELECT COUNT(id) as total FROM usuarios WHERE nivel_perfil = 'Admin'").fetchone()['total']
+        conn.close()
+        return qtd
+
+
+class Comissao:
+    @staticmethod
+    def gerar_hash_pagamento(usuario_id, valor_pago, percentual):
+        data_hora = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        string_base = f"USR:{usuario_id}|VAL:{valor_pago}|PERC:{percentual}|DAT:{data_hora}"
+        return hashlib.sha256(string_base.encode('utf-8')).hexdigest(), data_hora
+
+    @staticmethod
+    def registrar_pagamento(usuario_id, valor_total_vendas, percentual_aplicado):
+        """Calcula o valor da comissão e registra o pagamento gerando o hash."""
+        valor_pago = (valor_total_vendas * percentual_aplicado) / 100
+        hash_assinatura, data_hora = Comissao.gerar_hash_pagamento(usuario_id, valor_pago, percentual_aplicado)
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO historico_comissoes (usuario_id, data_pagamento, valor_pago, percentual_aplicado, hash_assinatura)
+            VALUES (?, ?, ?, ?, ?)
+        """, (usuario_id, data_hora, valor_pago, percentual_aplicado, hash_assinatura))
+        
+        id_comissao = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        return {
+            "id": id_comissao,
+            "valor_pago": valor_pago,
+            "hash_assinatura": hash_assinatura,
+            "data": data_hora
+        }

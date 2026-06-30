@@ -347,7 +347,7 @@
                 </div>
                 
                 <div class="info-produto">
-                    <div class="preco">R$ {{ "%.2f"|format(produto.valor_unitario) }}</div>
+                    <div class="preco">R$ {{ produto.valor_unitario|moeda_br }}</div>
                     <div class="descricao" title="{{ produto.descricao }}">{{ produto.descricao }}</div>
                     <div class="estoque">Cód: {{ produto.codigo }} | Estoque: <b>{{ produto.quantidade }}</b></div>
                     
@@ -385,10 +385,11 @@
 
             <div class="form-group-pdv">
                 <label>Vendedor / Atendente</label>
+                <!-- Agora lista a tabela usuarios em vez de profissionais -->
                 <select id="vendedorVenda">
-                    <option value="0">Não Informado</option>
-                    {% for p in profissionais %}
-                    <option value="{{ p.id }}">{{ p.nome }}</option>
+                    <option value="0">Não Informado (Sem Comissão)</option>
+                    {% for v in vendedores %}
+                    <option value="{{ v.id }}">{{ v.nome }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -482,10 +483,10 @@
                 <li class="item-carrinho">
                     <div class="item-info">
                         <span class="item-nome" title="${item.descricao}">${item.descricao}</span>
-                        <span class="item-detalhe">${item.quantidade}x R$ ${item.valor.toFixed(2).replace('.', ',')}</span>
+                        <span class="item-detalhe">${item.quantidade}x R$ ${item.valor.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                     </div>
                     <div class="item-acoes">
-                        <span class="item-preco-total">R$ ${subtotal.toFixed(2).replace('.', ',')}</span>
+                        <span class="item-preco-total">R$ ${subtotal.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                         <button class="btn-remover" onclick="removerDoCarrinho(${item.codigo})" title="Remover item">
                             <i class="fas fa-times"></i>
                         </button>
@@ -494,7 +495,7 @@
             `;
         });
 
-        totalSpan.innerText = `R$ ${total.toFixed(2).replace('.', ',')}`;
+        totalSpan.innerText = `R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     }
 
     function finalizarVenda() {

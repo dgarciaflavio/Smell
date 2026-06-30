@@ -53,23 +53,34 @@
     </div>
 </div>
 
+<!-- Filtro de Data (Novo recurso adicionado) -->
+<div class="agenda-container" style="padding: 16px; margin-bottom: 24px;">
+    <form method="GET" action="{{ url_for('main.financeiro') }}" style="display: flex; gap: 16px; align-items: flex-end;">
+        <div class="form-group" style="margin: 0;">
+            <label>Visualizar Caixa do Dia:</label>
+            <input type="date" name="data" class="form-control" value="{{ data_hoje }}">
+        </div>
+        <button type="submit" class="btn btn-secondary">Filtrar</button>
+    </form>
+</div>
+
 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 32px;">
     <div class="agenda-container" style="padding: 24px; border-left: 4px solid #22c55e;">
         <h4 style="color: var(--text-muted); margin-bottom: 8px; font-weight: 500;">Entradas</h4>
-        <h2 style="color: #22c55e;">R$ {{ "%.2f"|format(entradas) }}</h2>
+        <h2 style="color: #22c55e;">R$ {{ entradas|moeda_br }}</h2>
     </div>
     <div class="agenda-container" style="padding: 24px; border-left: 4px solid #ef4444;">
         <h4 style="color: var(--text-muted); margin-bottom: 8px; font-weight: 500;">Saídas</h4>
-        <h2 style="color: #ef4444;">R$ {{ "%.2f"|format(saidas) }}</h2>
+        <h2 style="color: #ef4444;">R$ {{ saidas|moeda_br }}</h2>
     </div>
     <div class="agenda-container" style="padding: 24px; border-left: 4px solid var(--text-dark);">
         <h4 style="color: var(--text-muted); margin-bottom: 8px; font-weight: 500;">Saldo Líquido Hoje</h4>
-        <h2 style="color: var(--text-dark);">R$ {{ "%.2f"|format(saldo) }}</h2>
+        <h2 style="color: var(--text-dark);">R$ {{ saldo|moeda_br }}</h2>
     </div>
 </div>
 
 <div class="agenda-container" style="padding: 24px;">
-    <h3 class="font-clinic-subtitle" style="margin-bottom: 16px; font-size: 1.1rem;">Movimentações de Hoje</h3>
+    <h3 class="font-clinic-subtitle" style="margin-bottom: 16px; font-size: 1.1rem;">Movimentações do Dia</h3>
     <table style="width: 100%; text-align: left; border-collapse: collapse;">
         <thead>
             <tr style="border-bottom: 2px solid var(--border-color);">
@@ -83,18 +94,18 @@
             {% if movimentacoes %}
                 {% for m in movimentacoes %}
                 <tr style="border-bottom: 1px solid var(--border-color);">
-                    <td style="padding: 12px 8px;">{{ m.data_hora_lancamento.split(' ')[1] }}</td>
+                    <td style="padding: 12px 8px;">{{ m.data_hora_lancamento[-8:-3] }}</td>
                     <td style="padding: 12px 8px;">{{ m.observacoes }}</td>
                     <td style="padding: 12px 8px;">{{ m.forma_pagamento }}</td>
                     <td style="padding: 12px 8px; font-weight: bold; color: {% if m.tipo == 'Entrada' %}#22c55e{% else %}#ef4444{% endif %};">
-                        {% if m.tipo == 'Saída' %}- {% endif %}R$ {{ "%.2f"|format(m.valor) }}
+                        {% if m.tipo == 'Saída' %}- {% endif %}R$ {{ m.valor|moeda_br }}
                     </td>
                 </tr>
                 {% endfor %}
             {% else %}
                 <tr>
                     <td colspan="4" style="text-align: center; padding: 32px; color: var(--text-muted);">
-                        Nenhuma movimentação registrada no caixa hoje ainda.
+                        Nenhuma movimentação registrada no caixa neste dia.
                     </td>
                 </tr>
             {% endif %}
@@ -102,9 +113,9 @@
     </table>
 </div>
 
-<!-- MODAL: NOVA VENDA (INTEGRADO AO ESTOQUE) -->
+<!-- MODAL: NOVA VENDA (Original Restaurado com a busca inteligente) -->
 <div class="modal-overlay" id="modalVenda">
-    <div class="modal-wrapper" style="overflow: visible;"> <!-- Overflow visible para o dropdown não ser cortado -->
+    <div class="modal-wrapper" style="overflow: visible;">
         <h3 class="font-clinic-subtitle" style="margin-bottom: 24px;"><i class="fa-solid fa-cart-shopping" style="margin-right: 8px;"></i>Registrar Venda de Produto</h3>
         <form id="formVenda">
             
@@ -127,7 +138,7 @@
                          onclick="selecionarProdutoVenda('{{ p.codigo }}', '{{ p.descricao }}', {{ p.valor_unitario }})">
                         <strong>{{ p.codigo }}</strong> - {{ p.descricao }}
                         <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">
-                            Em Estoque: {{ p.quantidade }} un | R$ {{ "%.2f"|format(p.valor_unitario) }}
+                            Em Estoque: {{ p.quantidade }} un | R$ {{ p.valor_unitario|moeda_br }}
                         </div>
                     </div>
                     {% endfor %}
@@ -151,7 +162,7 @@
             </div>
             
             <div style="margin-top: 16px; text-align: right; background-color: #fdf4ff; padding: 12px; border-radius: 8px;">
-                <h4 style="color: var(--color-smell-primary); margin: 0;">Total: R$ <span id="valorTotalVenda">0.00</span></h4>
+                <h4 style="color: var(--color-smell-primary); margin: 0;">Total: R$ <span id="valorTotalVenda">0,00</span></h4>
             </div>
             
             <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
@@ -192,16 +203,29 @@
     </div>
 </div>
 
-<!-- MODAL: FECHAR CAIXA -->
+<!-- MODAL: FECHAR CAIXA (Novo com o alerta e a data retroativa integrados) -->
 <div class="modal-overlay" id="modalFechamento">
-    <div class="modal-wrapper" style="text-align: center;">
-        <i class="fa-solid fa-triangle-exclamation" style="font-size: 3rem; color: #eab308; margin-bottom: 16px;"></i>
-        <h3 class="font-clinic-subtitle" style="margin-bottom: 16px;">Confirmação de Fechamento</h3>
-        <p style="color: var(--text-muted); margin-bottom: 24px;">Ao fechar o caixa de hoje, novos pagamentos serão registrados para o próximo dia útil. Confirma esta ação?</p>
-        <div style="display: flex; justify-content: center; gap: 12px;">
-            <button class="btn btn-secondary" onclick="fecharModalFechamento()">Cancelar</button>
-            <button class="btn btn-primary" onclick="confirmarFechamento()">Sim, Fechar Caixa</button>
+    <div class="modal-wrapper">
+        <h3 class="font-clinic-subtitle" style="margin-bottom: 16px;"><i class="fa-solid fa-lock" style="color: #f59e0b;"></i> Fechar Caixa</h3>
+        
+        <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 4px; margin-bottom: 24px;">
+            <p style="margin: 0; color: #b45309; font-size: 0.9rem; font-weight: 500;">
+                <i class="fa-solid fa-triangle-exclamation"></i> Aviso Importante:<br><br>
+                Caso tenha esquecido de fechar o caixa no último dia de operação (ex: esqueceu na sexta e só lembrou na segunda), informe a <b>Data Retroativa</b> abaixo. Se for o fechamento normal de hoje, basta deixar o campo vazio!
+            </p>
         </div>
+
+        <form id="formFechamento">
+            <div class="form-group">
+                <label>Data Retroativa (Opcional)</label>
+                <input type="date" name="data_retroativa" class="form-control">
+            </div>
+            
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 32px;">
+                <button type="button" class="btn btn-secondary" onclick="fecharModalFechamento()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Confirmar Fechamento</button>
+            </div>
+        </form>
     </div>
 </div>
 {% endblock %}
@@ -290,16 +314,16 @@
         atualizarTotalVenda(); // Recalcula o valor na hora
     }
 
-    // Cálculo do valor total da venda em tempo real
+    // Cálculo do valor total da venda em tempo real com formatação BR
     function atualizarTotalVenda() {
         const qtde = document.getElementById('inputQtdeVenda').value;
         const preco = hiddenPreco.value;
         
         if (hiddenCodigo.value !== "" && qtde > 0) {
-            const total = (parseFloat(preco) * parseInt(qtde)).toFixed(2);
-            document.getElementById('valorTotalVenda').innerText = total;
+            const total = parseFloat(preco) * parseInt(qtde);
+            document.getElementById('valorTotalVenda').innerText = total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         } else {
-            document.getElementById('valorTotalVenda').innerText = "0.00";
+            document.getElementById('valorTotalVenda').innerText = "0,00";
         }
     }
 
@@ -346,14 +370,24 @@
         });
     });
 
-    // Fechar Caixa
-    function confirmarFechamento() {
-        fetch("{{ url_for('main.fechar_caixa') }}", { method: 'POST' })
+    // Fechar Caixa (Novo com suporte à data retroativa)
+    document.getElementById('formFechamento').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const btn = this.querySelector('button[type="submit"]');
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processando...';
+        btn.disabled = true;
+
+        fetch("{{ url_for('main.fechar_caixa') }}", { method: 'POST', body: new FormData(this) })
         .then(response => response.json())
         .then(data => {
             alert(data.mensagem);
             fecharModalFechamento();
+            window.location.reload();
+        })
+        .finally(() => {
+            btn.innerHTML = 'Confirmar Fechamento';
+            btn.disabled = false;
         });
-    }
+    });
 </script>
 {% endblock %}
