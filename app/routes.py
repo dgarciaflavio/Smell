@@ -834,7 +834,11 @@ def salvar_anamnese():
     termo_assinado = request.form.get('termo_assinado')
     
     assinatura_cliente = request.form.get('assinatura_cliente_base64')
+    
+    # NOVAS LINHAS PARA TRATAR AS NOVAS ASSINATURAS:
     assinatura_profissional = request.form.get('assinatura_profissional_base64')
+    # A assinatura de testemunha não é mais exigida pela UI, mas mantemos o código
+    # caso haja envios nulos ou para não quebrar compatibilidade do banco:
     assinatura_testemunha = request.form.get('assinatura_testemunha_base64')
     
     data_retroativa = request.form.get('data_retroativa')
@@ -853,6 +857,7 @@ def salvar_anamnese():
             conn.execute("UPDATE anamneses_termos SET data_expiracao_token = '2000-01-01 00:00:00' WHERE token_temporario = ?", (token,))
         except sqlite3.OperationalError: pass
     
+    # GARANTINDO QUE AS COLUNAS EXISTAM:
     try:
         conn.execute("ALTER TABLE anamneses ADD COLUMN assinatura_profissional_base64 TEXT")
     except sqlite3.OperationalError: pass
@@ -875,6 +880,7 @@ def salvar_anamnese():
         except Exception:
             pass
 
+    # UPDATE DAS QUERIES DE INSERÇÃO:
     if data_retroativa:
         conn.execute("""
             INSERT INTO anamneses (cliente_id, profissional_nome, tipo, dados_json, termo_assinado, assinatura_base64, assinatura_profissional_base64, assinatura_testemunha_base64, data_preenchimento) 
@@ -942,6 +948,16 @@ def financeiro():
     entradas = sum(m['valor'] for m in movimentacoes if m['tipo'] == 'Entrada')
     saidas = sum(m['valor'] for m in movimentacoes if m['tipo'] == 'Saída')
     saldo = entradas - saidas
+    
+    # VALIDAÇÃO CAIXA ANTERIOR
+    ontem_str = (datetime.datetime.strptime(hoje, '%Y-%m-%d') - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+    movs_ontem = conn.execute("SELECT id FROM fluxo_caixa WHERE date(data_hora_lancamento) = ?", (ontem_str,)).fetchall()
+    caixa_ontem_fechado = conn.execute("SELECT id FROM fluxo_caixa WHERE date(data_hora_lancamento) = ? AND observacoes LIKE '%Fechamento%'", (ontem_str,)).fetchone()
+    
+    alerta_caixa = False
+    if len(movs_ontem) > 0 and not caixa_ontem_fechado:
+        alerta_caixa = True
+
     conn.close()
 
     conn_est = get_estoque_db_connection()
@@ -949,7 +965,7 @@ def financeiro():
     produtos_json = [dict(p) for p in produtos]
     conn_est.close()
 
-    return render_template('financeiro.html', movimentacoes=movimentacoes, entradas=entradas, saidas=saidas, saldo=saldo, produtos=produtos_json, data_hoje=hoje)
+    return render_template('financeiro.html', movimentacoes=movimentacoes, entradas=entradas, saidas=saidas, saldo=saldo, produtos=produtos_json, data_hoje=hoje, alerta_caixa=alerta_caixa)
 
 @main_bp.route('/financeiro/venda', methods=['POST'])
 @login_required
@@ -1385,6 +1401,13 @@ def nova_despesa():
 def fechar_caixa():
     data_retroativa = request.form.get('data_retroativa')
     data_fechamento = data_retroativa if data_retroativa else datetime.datetime.now().strftime('%d/%m/%Y')
+    
+    # Registra no BD que o caixa foi fechado
+    conn = get_db_connection()
+    conn.execute("INSERT INTO fluxo_caixa (tipo, valor, forma_pagamento, observacoes) VALUES ('Fechamento', 0, '-', ?)", (f"Fechamento de Caixa do dia {data_fechamento}",))
+    conn.commit()
+    conn.close()
+
     return jsonify({"mensagem": f"Caixa do dia {data_fechamento} fechado com sucesso! Relatório gerado (Visual)."})
 
 @main_bp.route('/api/agendamentos/mes', methods=['GET'])
@@ -1494,7 +1517,12 @@ def gerar_codigo_produto_unico():
 def novo_produto():
     descricao = request.form.get('descricao')
     categoria_nome = request.form.get('categoria', '').strip()
-    valor_unitario = float(request.form.get('valor_unitario', 0.0))
+    
+    # Tratamento da formatação (Ponto de Milhar e Vírgula Decimal)
+    valor_unitario_str = request.form.get('valor_unitario', '0')
+    valor_unitario_str = valor_unitario_str.replace('.', '').replace(',', '.')
+    valor_unitario = float(valor_unitario_str)
+    
     quantidade = int(request.form.get('quantidade', 0))
     foto = request.files.get('foto')
 
@@ -1532,7 +1560,12 @@ def editar_produto():
     codigo = request.form.get('codigo')
     nova_descricao = request.form.get('descricao')
     nova_categoria_nome = request.form.get('categoria', '').strip()
-    novo_valor = float(request.form.get('valor_unitario', 0.0))
+    
+    # Tratamento da formatação (Ponto de Milhar e Vírgula Decimal)
+    novo_valor_str = request.form.get('valor_unitario', '0')
+    novo_valor_str = novo_valor_str.replace('.', '').replace(',', '.')
+    novo_valor = float(novo_valor_str)
+    
     foto = request.files.get('foto')
 
     conn = get_estoque_db_connection()
@@ -1606,15 +1639,27 @@ def ajustar_estoque_unitario():
     codigo = int(request.form.get('codigo'))
     nova_quantidade = int(request.form.get('quantidade', 0))
     
-    conn = get_estoque_db_connection()
-    prod = conn.execute("SELECT quantidade FROM produtos WHERE codigo = ?", (codigo,)).fetchone()
+    # Formatação do novo valor para ajuste
+    novo_valor_str = request.form.get('valor_unitario')
     
-    if prod and prod['quantidade'] != nova_quantidade:
-        diff = nova_quantidade - prod['quantidade']
-        tipo = 'Entrada' if diff > 0 else 'Saída'
-        
-        conn.execute("UPDATE produtos SET quantidade = ? WHERE codigo = ?", (nova_quantidade, codigo))
-        conn.execute("INSERT INTO historico_estoque (produto_codigo, tipo, quantidade_movimentada, quantidade_saldo, observacoes) VALUES (?, ?, ?, ?, 'Ajuste Manual Rápido')", (codigo, tipo, abs(diff), nova_quantidade))
+    conn = get_estoque_db_connection()
+    prod = conn.execute("SELECT quantidade, valor_unitario FROM produtos WHERE codigo = ?", (codigo,)).fetchone()
+    
+    if prod:
+        if prod['quantidade'] != nova_quantidade:
+            diff = nova_quantidade - prod['quantidade']
+            tipo = 'Entrada' if diff > 0 else 'Saída'
+            
+            conn.execute("UPDATE produtos SET quantidade = ? WHERE codigo = ?", (nova_quantidade, codigo))
+            conn.execute("INSERT INTO historico_estoque (produto_codigo, tipo, quantidade_movimentada, quantidade_saldo, observacoes) VALUES (?, ?, ?, ?, 'Ajuste Manual Rápido')", (codigo, tipo, abs(diff), nova_quantidade))
+            
+        if novo_valor_str:
+             novo_valor_str = novo_valor_str.replace('.', '').replace(',', '.')
+             novo_valor = float(novo_valor_str)
+             if prod['valor_unitario'] != novo_valor:
+                 conn.execute("UPDATE produtos SET valor_unitario = ? WHERE codigo = ?", (novo_valor, codigo))
+                 conn.execute("INSERT INTO historico_estoque (produto_codigo, tipo, quantidade_movimentada, quantidade_saldo, observacoes) VALUES (?, 'Ajuste', 0, ?, ?)", (codigo, nova_quantidade, f"Preço ajustado via Busca e Ajuste para R$ {novo_valor:.2f}"))
+                 
         conn.commit()
         
     conn.close()
@@ -1795,19 +1840,64 @@ def imprimir_relatorio_estoque():
 @login_required
 def relatorio_vendas():
     mes = request.args.get('mes') 
+    
+    # Se uma ID de usuário for passada, filtramos por vendedor
+    usuario_id = request.args.get('usuario_id')
+    
     conn = get_estoque_db_connection()
-    query = """
-        SELECT p.codigo, p.descricao, SUM(h.quantidade_movimentada) as total_vendido
-        FROM historico_estoque h
-        JOIN produtos p ON h.produto_codigo = p.codigo
-        WHERE h.tipo = 'Venda' AND h.data_hora LIKE ?
-        GROUP BY p.codigo
-        ORDER BY total_vendido DESC
-        LIMIT 50
-    """
-    rows = conn.execute(query, (f"{mes}%",)).fetchall()
-    conn.close()
-    return jsonify([dict(r) for r in rows])
+    conn_db = get_db_connection()
+    
+    if usuario_id:
+        # Busca nas vendas do PDV (onde temos a amarração com o vendedor)
+        vendas = conn_db.execute("""
+            SELECT vi.produto_codigo, vi.descricao, SUM(vi.quantidade) as total_vendido, SUM(vi.total_item) as valor_total
+            FROM vendas_itens vi
+            JOIN vendas v ON vi.venda_id = v.id
+            WHERE v.vendedor_id = ? AND v.data_hora LIKE ?
+            GROUP BY vi.produto_codigo
+            ORDER BY total_vendido DESC
+        """, (usuario_id, f"{mes}%")).fetchall()
+        
+        resultado = []
+        for v in vendas:
+            resultado.append({
+                'codigo': v['produto_codigo'],
+                'descricao': v['descricao'],
+                'total_vendido': v['total_vendido'],
+                'valor_total': v['valor_total']
+            })
+            
+        conn_db.close()
+        conn.close()
+        return jsonify(resultado)
+    else:
+        # Relatório geral de estoque
+        query = """
+            SELECT p.codigo, p.descricao, SUM(h.quantidade_movimentada) as total_vendido
+            FROM historico_estoque h
+            JOIN produtos p ON h.produto_codigo = p.codigo
+            WHERE h.tipo = 'Venda' AND h.data_hora LIKE ?
+            GROUP BY p.codigo
+            ORDER BY total_vendido DESC
+            LIMIT 50
+        """
+        rows = conn.execute(query, (f"{mes}%",)).fetchall()
+        
+        resultado = []
+        for r in rows:
+            # Pegar o valor atual do produto apenas para referência, já que no historico antigo não tem o valor de venda
+            prod = conn.execute("SELECT valor_unitario FROM produtos WHERE codigo = ?", (r['codigo'],)).fetchone()
+            val_uni = prod['valor_unitario'] if prod else 0
+            resultado.append({
+                'codigo': r['codigo'],
+                'descricao': r['descricao'],
+                'total_vendido': r['total_vendido'],
+                'valor_total': r['total_vendido'] * val_uni
+            })
+            
+        conn_db.close()
+        conn.close()
+        return jsonify(resultado)
 
 @main_bp.route('/api/relatorios/saidas', methods=['GET'])
 @login_required
@@ -1864,18 +1954,37 @@ def pagar_comissao():
     usuario_id = request.form.get('usuario_id')
     valor_total = float(request.form.get('valor_total_vendas', 0))
     percentual_aplicado = float(request.form.get('percentual_aplicado', 0))
+    assinatura_admin_base64 = request.form.get('assinatura_admin_base64')
     
     if valor_total <= 0:
         return jsonify({"erro": True, "mensagem": "Não há vendas válidas para pagar comissão."})
         
+    if not assinatura_admin_base64:
+        return jsonify({"erro": True, "mensagem": "A assinatura do pagador é obrigatória."})
+        
     # Registra no BD e gera a Assinatura (Hash)
     recibo = Comissao.registrar_pagamento(usuario_id, valor_total, percentual_aplicado)
     
-    # Envia o recibo digital pelo WhatsApp via Bot
+    # GERA O PDF E DISPARA
+    from app.gerador_relatorios import gerar_pdf_comissao
+    
     conn = get_db_connection()
     usuario = conn.execute("SELECT nome, telefone FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
     
     if usuario and usuario['telefone']:
+        dados_recibo = {
+            'nome_vendedor': usuario['nome'],
+            'valor_vendas': valor_total,
+            'percentual': percentual_aplicado,
+            'valor_pago': recibo['valor_pago'],
+            'data_hora': recibo['data'],
+            'hash_assinatura': recibo['hash_assinatura'],
+            'assinatura_img': assinatura_admin_base64
+        }
+        
+        # Gera o PDF
+        pdf_path = gerar_pdf_comissao(dados_recibo)
+        
         msg_whatsapp = (
             f"🧾 *RECIBO DIGITAL DE COMISSÃO*\n\n"
             f"Olá, {usuario['nome']}!\n"
@@ -1883,17 +1992,29 @@ def pagar_comissao():
             f"🔸 *Base de Cálculo:* R$ {formatar_moeda_br(valor_total)}\n"
             f"🔸 *Percentual Aplicado:* {str(percentual_aplicado).replace('.', ',')}%\n"
             f"💰 *VALOR RECEBIDO:* R$ {formatar_moeda_br(recibo['valor_pago'])}\n\n"
-            f"🕒 *Data/Hora:* {recibo['data']}\n"
-            f"🔐 *Assinatura Eletrônica (Hash):*\n{recibo['hash_assinatura']}"
+            f"O comprovante detalhado e assinado segue em anexo."
         )
+        
+        # Insere a mensagem de texto
         conn.execute("INSERT INTO fila_whatsapp (numero_destino, mensagem, status) VALUES (?, ?, 'Pendente')", (usuario['telefone'], msg_whatsapp))
+        
+        # Insere o arquivo na fila de mídia
+        try:
+            conn.execute("INSERT INTO fila_whatsapp_midia (numero_destino, caminho_arquivo, legenda, status) VALUES (?, ?, ?, 'Pendente')", 
+                         (usuario['telefone'], pdf_path, "Recibo Comissão.pdf"))
+        except sqlite3.OperationalError:
+            # Fallback caso a tabela não exista, cria e insere
+            conn.execute("CREATE TABLE IF NOT EXISTS fila_whatsapp_midia (id INTEGER PRIMARY KEY AUTOINCREMENT, numero_destino TEXT, caminho_arquivo TEXT, legenda TEXT, status TEXT, data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+            conn.execute("INSERT INTO fila_whatsapp_midia (numero_destino, caminho_arquivo, legenda, status) VALUES (?, ?, ?, 'Pendente')", 
+                         (usuario['telefone'], pdf_path, "Recibo Comissão.pdf"))
+            
         conn.commit()
         
     conn.close()
     
     return jsonify({
         "erro": False, 
-        "mensagem": "Comissão paga e assinada digitalmente com sucesso! Recibo enviado via WhatsApp."
+        "mensagem": "Comissão paga, PDF gerado com assinatura e enviado via WhatsApp!"
     })
 
 # ==============================================================

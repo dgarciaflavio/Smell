@@ -46,7 +46,7 @@
         color: var(--text-dark);
         position: sticky;
         top: 0;
-        z-index: 100; /* << ATUALIZADO PARA NÃO SER COBERTO PELOS CARDS */
+        z-index: 100;
     }
 
     /* Células da coluna de tempo (Hora Cheia e Meia Hora) */
@@ -78,19 +78,19 @@
         padding: 0 4px;
         font-weight: 500;
         font-size: 0.75rem;
-        color: #94a3b8; /* Cor mais suave para não poluir visualmente */
+        color: #94a3b8; 
     }
 
     /* Célula onde os cards se encaixam (Grade da Agenda) */
     .agenda-slot-cell {
-        height: 60px; /* Altura fixa exigida para o cálculo matemático */
+        height: 60px; 
         position: relative; 
         box-sizing: border-box;
-        border-bottom: 1px dashed #cbd5e1; /* Linha tracejada demarcando a meia hora */
+        border-bottom: 1px dashed #cbd5e1; 
     }
     /* Célula que fecha a hora redonda (ex: final das 10:30, ou seja, linha das 11:00) */
     .agenda-slot-cell.half-hour {
-        border-bottom: 1px solid #94a3b8; /* Linha sólida demarcando a hora cheia */
+        border-bottom: 1px solid #94a3b8; 
     }
 
     /* Estética do Card de Atendimento */
@@ -185,6 +185,7 @@
     <div class="agenda-board">
         <div class="agenda-column-time">
             <div class="agenda-header-cell">Horário</div>
+            <div class="agenda-spacer"></div> <!-- Spacer para o horário não se esconder atrás do cabeçalho -->
             {% for hora in range(abertura, fechamento) %}
                 <div class="agenda-time-cell time-full"><span>{{ "%02d:00" | format(hora) }}</span></div>
                 <div class="agenda-time-cell time-half"><span>{{ "%02d:30" | format(hora) }}</span></div>
@@ -195,6 +196,7 @@
             {% for prof in profissionais %}
             <div class="agenda-column-prof">
                 <div class="agenda-header-cell">{{ prof.nome }}</div>
+                <div class="agenda-spacer"></div> <!-- Spacer alinhado com os horários -->
                 {% for hora in range(abertura, fechamento) %}
                     <div class="agenda-slot-cell" data-prof="{{ prof.id }}" data-time="{{ '%02d:00' | format(hora) }}"></div>
                     <div class="agenda-slot-cell half-hour" data-prof="{{ prof.id }}" data-time="{{ '%02d:30' | format(hora) }}"></div>

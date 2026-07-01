@@ -210,8 +210,8 @@
             Declaro que prestei todas as informações sobre minhas condições de saúde de forma fidedigna, eximindo o profissional de responsabilidades sobre sintomas decorrentes de omissões. Declaro estar ciente de que as técnicas aplicadas compreendem manipulações corporais voltadas ao alívio de tensões, relaxamento ou estimulação circulatória e linfática. Estou ciente de que, após as sessões, é perfeitamente normal apresentar sintomas temporários como sonolência, leve fadiga ou sensibilidade muscular difusa nas áreas trabalhadas. Confirmo que fui orientado quanto às contraindicações e concordo em submeter-me aos protocolos de massoterapia e técnicas corporais associadas.
         </p>
 
-        <div class="row text-center mb-4">
-            <div class="col-md-4 mb-3">
+        <div class="row text-center mb-4" style="display: flex; justify-content: center; gap: 24px;">
+            <div class="col-md-5 mb-3">
                 <label style="font-weight: bold; display: block; margin-bottom: 8px;">1. Assinatura do Cliente</label>
                 {% if modo_avaliacao %}
                     <img src="{{ anamnese_obj.assinatura_base64 }}" style="width: 100%; height: 120px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; object-fit: contain;">
@@ -221,23 +221,13 @@
                 {% endif %}
             </div>
             
-            <div class="col-md-4 mb-3">
+            <div class="col-md-5 mb-3">
                 <label style="font-weight: bold; display: block; margin-bottom: 8px;">2. Assinatura Profissional</label>
                 {% if modo_avaliacao %}
                     <img src="{{ anamnese_obj.assinatura_profissional_base64 }}" style="width: 100%; height: 120px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; object-fit: contain;">
                 {% else %}
                     <canvas id="assinatura2" style="width: 100%; height: 120px; background: white; border: 1px dashed #94a3b8; border-radius: 8px; touch-action: none; cursor: crosshair;"></canvas>
                     <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="limparAssinatura(2)">Limpar Assinatura 2</button>
-                {% endif %}
-            </div>
-            
-            <div class="col-md-4 mb-3">
-                <label style="font-weight: bold; display: block; margin-bottom: 8px;">3. Assinatura Testemunha</label>
-                {% if modo_avaliacao %}
-                    <img src="{{ anamnese_obj.assinatura_testemunha_base64 }}" style="width: 100%; height: 120px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; object-fit: contain;">
-                {% else %}
-                    <canvas id="assinatura3" style="width: 100%; height: 120px; background: white; border: 1px dashed #94a3b8; border-radius: 8px; touch-action: none; cursor: crosshair;"></canvas>
-                    <button type="button" class="btn btn-sm btn-outline-danger mt-2" onclick="limparAssinatura(3)">Limpar Assinatura 3</button>
                 {% endif %}
             </div>
         </div>
@@ -345,10 +335,9 @@
 
     const sig1 = setupCanvas('assinatura1');
     const sig2 = setupCanvas('assinatura2');
-    const sig3 = setupCanvas('assinatura3');
 
     function limparAssinatura(num) {
-        let obj = num === 1 ? sig1 : (num === 2 ? sig2 : sig3);
+        let obj = num === 1 ? sig1 : sig2;
         if(obj) obj.ctx.clearRect(0, 0, obj.canvas.width, obj.canvas.height);
     }
     {% endif %}
@@ -402,7 +391,6 @@
             pacote.append('termo_assinado', document.getElementById('texto-termo').innerText);
             pacote.append('assinatura_cliente_base64', sig1.canvas.toDataURL("image/png"));
             pacote.append('assinatura_profissional_base64', sig2.canvas.toDataURL("image/png"));
-            pacote.append('assinatura_testemunha_base64', sig3.canvas.toDataURL("image/png"));
             
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.has('token')) {

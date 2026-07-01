@@ -63,20 +63,36 @@
         display: block;
         margin-bottom: 4px;
     }
-    .signature-box {
+    .signature-grid {
+        display: flex;
+        justify-content: center;
+        gap: 40px;
         margin-top: 40px;
-        text-align: center;
         page-break-inside: avoid;
     }
+    .signature-box {
+        text-align: center;
+        width: 45%;
+    }
+    .signature-box img {
+        max-height: 120px;
+        width: 100%;
+        object-fit: contain;
+        border-bottom: 1px solid #ccc;
+        padding-bottom: 8px;
+        margin-bottom: 8px;
+    }
     .hash-security {
-        margin-top: 16px;
+        margin-top: 32px;
         font-family: monospace;
         font-size: 0.75rem;
         color: #64748b;
         background-color: #f1f5f9;
-        padding: 8px;
+        padding: 12px;
         border-radius: 4px;
         word-break: break-all;
+        text-align: center;
+        page-break-inside: avoid;
     }
 
     /* Regras para quando o usuário clicar em Imprimir (CTRL+P) */
@@ -137,17 +153,36 @@
         {{ anamnese.termo_assinado }}
     </p>
 
-    <div class="signature-box">
-        <p style="margin-bottom: 8px; font-weight: bold; color: var(--color-smell-primary);">Assinatura Digital do Paciente</p>
-        <img src="{{ anamnese.assinatura_base64 }}" alt="Assinatura" style="max-height: 120px; border-bottom: 1px solid #ccc; padding-bottom: 8px; margin-bottom: 8px;">
-        <p style="font-size: 0.9rem; font-weight: bold; margin: 0;">{{ cliente.nome }}</p>
-        <p style="font-size: 0.8rem; color: var(--text-muted); margin: 4px 0 0 0;">CPF: {{ cliente.cpf }}</p>
-        
-        <div class="hash-security">
-            <i class="fa-solid fa-shield-halved" style="color: #22c55e; margin-right: 6px;"></i> 
-            <strong>HASH DE INTEGRIDADE (SHA-256):</strong><br>
-            {{ hash_seguranca }}
+    <div class="signature-grid">
+        <!-- Assinatura do Cliente -->
+        <div class="signature-box">
+            <p style="margin-bottom: 8px; font-weight: bold; color: var(--color-smell-primary); font-size: 0.9rem;">Assinatura Digital do Paciente</p>
+            {% if anamnese.assinatura_base64 %}
+                <img src="{{ anamnese.assinatura_base64 }}" alt="Assinatura Paciente">
+            {% else %}
+                <div style="height: 120px; border-bottom: 1px solid #ccc; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-style: italic; margin-bottom: 8px;">Não coletada</div>
+            {% endif %}
+            <p style="font-size: 0.9rem; font-weight: bold; margin: 0;">{{ cliente.nome }}</p>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin: 4px 0 0 0;">CPF: {{ cliente.cpf }}</p>
         </div>
+
+        <!-- Assinatura do Profissional -->
+        <div class="signature-box">
+            <p style="margin-bottom: 8px; font-weight: bold; color: var(--color-smell-primary); font-size: 0.9rem;">Assinatura do Profissional</p>
+            {% if anamnese.assinatura_profissional_base64 %}
+                <img src="{{ anamnese.assinatura_profissional_base64 }}" alt="Assinatura Profissional">
+            {% else %}
+                <div style="height: 120px; border-bottom: 1px solid #ccc; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-style: italic; margin-bottom: 8px;">Não coletada</div>
+            {% endif %}
+            <p style="font-size: 0.9rem; font-weight: bold; margin: 0;">{{ anamnese.profissional_nome }}</p>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin: 4px 0 0 0;">Responsável Técnico</p>
+        </div>
+    </div>
+
+    <div class="hash-security">
+        <i class="fa-solid fa-shield-halved" style="color: #22c55e; margin-right: 6px;"></i> 
+        <strong>HASH DE INTEGRIDADE (SHA-256):</strong><br>
+        {{ hash_seguranca }}
     </div>
 </div>
 {% endblock %}

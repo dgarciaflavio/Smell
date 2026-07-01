@@ -123,9 +123,9 @@ def init_db():
     CREATE TABLE IF NOT EXISTS fluxo_caixa (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         agendamento_id INTEGER,
-        tipo TEXT NOT NULL CHECK (tipo IN ('Entrada', 'Saída')),
+        tipo TEXT NOT NULL CHECK (tipo IN ('Entrada', 'Saída', 'Fechamento')),
         valor REAL NOT NULL,
-        forma_pagamento TEXT CHECK (forma_pagamento IN ('Pix', 'Cartão de Crédito', 'Cartão de Débito', 'Dinheiro', 'Transferência Bancária')),
+        forma_pagamento TEXT CHECK (forma_pagamento IN ('Pix', 'Cartão de Crédito', 'Cartão de Débito', 'Dinheiro', 'Transferência Bancária', '-')),
         data_hora_lancamento TEXT DEFAULT (datetime('now', 'localtime')),
         observacoes TEXT,
         FOREIGN KEY (agendamento_id) REFERENCES agendamentos (id)

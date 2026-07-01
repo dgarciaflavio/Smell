@@ -53,6 +53,16 @@
     </div>
 </div>
 
+{% if alerta_caixa %}
+<div style="background-color: #fee2e2; border-left: 4px solid #ef4444; padding: 16px; margin-bottom: 24px; border-radius: 8px; display: flex; align-items: center; gap: 12px;">
+    <i class="fa-solid fa-triangle-exclamation" style="color: #ef4444; font-size: 1.5rem;"></i>
+    <div>
+        <h4 style="margin: 0; color: #991b1b; font-weight: bold;">Alerta de Caixa Pendente</h4>
+        <p style="margin: 0; color: #b91c1c; font-size: 0.9rem;">O caixa do dia anterior teve movimentações, mas não foi fechado. Por favor, realize o fechamento informando a data retroativa no modal.</p>
+    </div>
+</div>
+{% endif %}
+
 <!-- Filtro de Data (Novo recurso adicionado) -->
 <div class="agenda-container" style="padding: 16px; margin-bottom: 24px;">
     <form method="GET" action="{{ url_for('main.financeiro') }}" style="display: flex; gap: 16px; align-items: flex-end;">

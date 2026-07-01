@@ -56,6 +56,7 @@ body { font-family: 'Montserrat', sans-serif; background-color: var(--bg-main); 
 .agenda-header-cell { padding: 16px; text-align: center; font-weight: 600; border-right: 1px solid var(--border-color); background-color: #fafafa; }
 .agenda-time-column { text-align: center; font-size: 0.85rem; color: var(--text-muted); font-weight: 500; padding: 12px 0; border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); background-color: #fafafa; }
 .agenda-slot-cell { border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); min-height: 50px; position: relative; padding: 4px; }
+.agenda-spacer { height: 12px; background-color: transparent; border-right: 1px solid var(--border-color); }
 
 .calendario-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
 .calendario-header { text-align: center; font-weight: 600; color: var(--text-muted); padding: 8px 0; font-size: 0.9rem; }
